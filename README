@@ -1,0 +1,11 @@
+pibus
+=====
+
+Raspberry Pi BMW ibus interface software
+
+
+rpi - Software to run on the Raspberry Pi
+attiny2313a - Firmware to run on the ATtiny2313A microcontroller
+
+
+See www.classiccomputing.info/pibus for more info.
