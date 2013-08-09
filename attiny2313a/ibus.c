@@ -335,13 +335,22 @@ void check_packet()
 	/* ============================================ */
 
 	// "\x68\x12\x3b\x23\x62\x10\x43\x44\x43\x20\x31\x2d\x30\x34\x20\x20\x20\x20\x20\x4c"
+	// or	
+	// "\x68\x0e\x3b\x23\x62\x10\x54\x52\x20\x30\x34\x20\"
 
-	else if (bufPos == 20 &&
-		buf[0] == 0x68 &&
-		buf[6] == 0x43 &&
-		buf[13] == 0x34 &&
-		buf[19] == 0x4c)
-	{
+	else if ((bufPos == 20 &&
+		buf[0] == 0x68 &&		
+		buf[6] == 0x43 &&		
+		buf[13] == 0x34 &&		
+		buf[19] == 0x4c) ||		
+		(bufPos == 16 &&		
+		buf[0] == 0x68 &&		
+		buf[6] == 0x54 &&		
+		buf[7] == 0x52 &&		
+		buf[8] == 0x20 &&		
+		buf[9] == 0x30 &&		
+		buf[10] == 0x34)) 
+	{		
 		videoSource = VIDEO_SRC_PI;
 		set_video(videoSource);
 	}
