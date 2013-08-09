@@ -1,0 +1,4 @@
+# ignoring executable files
+
+rpi/pibus
+rpi/pibus.debug

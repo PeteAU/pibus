@@ -30,6 +30,7 @@ static struct
 	bool playing;
 	bool send_window_open;
 	bool keyboard_blocked;
+	bool cd_polled;
 
 	uint64_t last_byte;
 	int bufPos;
@@ -45,6 +46,7 @@ ibus =
 	.playing = FALSE,
 	.send_window_open = FALSE,
 	.keyboard_blocked = TRUE,
+	.cd_polled = FALSE,
 
 	.last_byte = 0,
 	.bufPos = 0,
@@ -54,9 +56,7 @@ ibus =
 	.hhmm = {0,},
 };
 
-
 FILE *flog;
-
 
 static void power_off(void)
 {
@@ -257,9 +257,9 @@ static void cdchanger_handle_poll(const unsigned char *msg, int length)
 	RODATA cdc_im_here[] = "\x18\x04\xFF\x02\x00\xE1";
 
 	ibus_send(ibus.ifd, cdc_im_here, 6);
+	
+	ibus.cd_polled = TRUE;
 }
-
-
 
 static const struct
 {
@@ -403,6 +403,21 @@ static void ibus_read(int condition, void *unused)
 
 }
 
+/*
+	When the I-Bus wakes up, the CD player starts to announce it-self ("02 01" msg) every 30 secondes 
+	until the radio poll ("01"). At the first poll, the CD will send a poll response ("02 00"), 
+	then will respond to each next poll (every 30 secondes).
+	If the CD doesn't respond to the poll, the radio considers that there is no CD Player (or not anymore).
+*/
+static void announce_cdc()
+{
+	if (!ibus.cd_polled)
+	{
+		RODATA cdc_announce[] = "\x18\x04\xFF\x02\x01\xE0";
+		ibus_send(ibus.ifd, cdc_announce, 6);
+	}
+}
+
 /* every 50ms */
 
 static int ibus_tick(void *unused)
@@ -423,19 +438,19 @@ static int ibus_tick(void *unused)
 	}
 
 	j++;
-	if (j >= 400)
+	if (j >= 600)
 	{
 		j = 0;
-		/* flush log & announce CD-changer every 20s */
+		/* flush log & announce CD-changer every 30s */
 		fflush(flog);
-		RODATA cdc_announce[] = "\x18\x04\xFF\x02\x01\xE0";
-		ibus_send(ibus.ifd, cdc_announce, 6);
+		announce_cdc();
 	}
 
 	ibus_service_queue(ibus.ifd, ibus.send_window_open);
 
 	return 1;
 }
+
 
 int ibus_init(const char *port)
 {
@@ -492,3 +507,4 @@ void ibus_cleanup(void)
 		ibus.ifd = -1;
 	}*/
 }
+
