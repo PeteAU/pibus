@@ -86,6 +86,7 @@ unsigned char ledQueue;
 uint16_t ledQueueTimeout;
 uint16_t idleCount;
 unsigned char settings;
+unsigned char packetSeen;
 
 //unsigned char temperature = 0xff;
 //unsigned char coolant = 0xff;
@@ -436,8 +437,13 @@ ISR(TIMER0_OVF_vect)
 	static uint16_t count = 0;
 
 	count++;
-	if (count < 2)
+	if (count == 1)
 	{
+		PORTD |= D_LED;
+	}
+	else if (packetSeen == 0 && count == 30)
+	{
+		/* No IBUS -> Double blink */
 		PORTD |= D_LED;
 	}
 	else
@@ -534,6 +540,7 @@ ISR(USART_RX_vect)
 			}
 			check_packet();
 			idleCount = 0;
+			packetSeen = 1;
 		}
 	}
 }
@@ -580,6 +587,7 @@ int main()
 	ledQueueTimeout = 0;
 	idleCount = 0;
 	settings = 0;
+	packetSeen = 0;
 
 	/* ================================================================= */
 	/* === CLOCK ======================================================= */
