@@ -69,6 +69,12 @@ videoSource_t;
 #define LED_GREEN		0x10
 #define LED_GREEN_BLINK 	(0x20 | LED_GREEN)
 
+/* The RPI can send us a message to change these settings: */
+
+#define SETTING_NO_PHONE_BUTTON		1	/* For cars with factory bluetooth */
+#define SETTING_NO_CAMERA		2	/* Don't switch to camera on 'R' gear */
+#define SETTING_NO_CDC			4	/* Don't switch video on CDC on/off */
+#define SETTING_NO_IDLE_TIMEOUT		8	/* Don't power off PI after 6 minutes */
 
 unsigned char buf[32];
 unsigned char bufPos;
@@ -79,6 +85,7 @@ unsigned char relayOnCount;
 unsigned char ledQueue;
 uint16_t ledQueueTimeout;
 uint16_t idleCount;
+unsigned char settings;
 
 //unsigned char temperature = 0xff;
 //unsigned char coolant = 0xff;
@@ -210,7 +217,8 @@ void check_packet()
 		buf[2] == 0xFF &&
 		buf[3] == 0x48 &&
 		buf[4] == 0x08 &&
-		buf[5] == 0x4B	)
+		buf[5] == 0x4B &&
+		(!(settings & SETTING_NO_PHONE_BUTTON)))
 	{
 		// led for 0.5 second
 		ledQueueTimeout = 75;
@@ -280,7 +288,8 @@ void check_packet()
 	else if (bufPos == 12 &&
 		buf[0] == 0x80 &&
 		buf[2] == 0xBF &&
-		buf[3] == 0x13 )
+		buf[3] == 0x13 &&
+		(!(settings & SETTING_NO_CAMERA)))
 	{
 		/*switch (buf[5] >> 4)
 		{
@@ -331,6 +340,32 @@ void check_packet()
 	}*/
 
 	/* ============================================ */
+	/* ===== Custom Message from Raspberry Pi ===== */
+	/* ============================================ */
+
+	else if (bufPos == 6 &&
+		buf[0] == 0xd7 &&
+		buf[2] == 0xd8)
+	{
+		/* Format: d7 04 d8 MSGID ARG1 CC */
+		/* D7 and D8 just happen not to be used by BMW. */
+
+		if ((buf[0] ^ buf[1] ^ buf[2] ^ buf[3] ^ buf[4]) == buf[5])
+		{
+			switch (buf[3])
+			{
+				case 0x70:	/* set settings */
+					settings = buf[4];
+					break;
+				case 0x71:	/* set video src */
+					videoSource = buf[4];
+					set_video(videoSource);
+					break;
+			}
+		}
+	}
+
+	/* ============================================ */
 	/* ============= Enter CDC Mode  ============== */
 	/* ============================================ */
 
@@ -350,16 +385,20 @@ void check_packet()
 		buf[8] == 0x20 &&		
 		buf[9] == 0x30 &&		
 		buf[10] == 0x34)) 
-	{		
-		videoSource = VIDEO_SRC_PI;
-		set_video(videoSource);
+	{
+		if (!(settings & SETTING_NO_CDC))
+		{
+			videoSource = VIDEO_SRC_PI;
+			set_video(videoSource);
+		}
 	}
 
 	/* ============================================ */
 	/* ============= Exit CDC Mode ================ */
 	/* ============================================ */
 
-	else if (bufPos == 6)
+	else if (bufPos == 6 &&
+		(!(settings & SETTING_NO_CDC)))
 	{
 		if (buf[0] == 0xf0 &&
 		    buf[3] == 0x48)	/* buttons */
@@ -414,7 +453,10 @@ ISR(TIMER0_OVF_vect)
 		{
 			count = 0;
 		}
-		PORTB |= B_PWR_ENABLE;
+		if (!(settings & SETTING_NO_IDLE_TIMEOUT))
+		{
+			PORTB |= B_PWR_ENABLE;
+		}
 	}
 	else
 	{
@@ -537,6 +579,7 @@ int main()
 	ledQueue = 0;
 	ledQueueTimeout = 0;
 	idleCount = 0;
+	settings = 0;
 
 	/* ================================================================= */
 	/* === CLOCK ======================================================= */
