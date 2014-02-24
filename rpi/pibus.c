@@ -3,6 +3,7 @@
  * All Rights Reserved
  */
 
+#include <unistd.h>
 #include <stdio.h>
 #include <time.h>
 #include <string.h>
@@ -10,23 +11,56 @@
 #include <stdint.h>
 
 #include "keyboard.h"
+#include "mainloop.h"
 #include "ibus.h"
 #include "gpio.h"
-#include "mainloop.h"
 
 
 
 int main(int argc, char **argv)
 {
-	if (argc < 2)
-	{
-		fprintf(stderr, "Usage: %s <serialPort>\r\n", argv[0]);
-		return -1;
-	}
+	int opt;
+	bool bluetooth = FALSE;
+	bool mk3 = TRUE;
+	bool camera = TRUE;
+	const char *port = "/dev/ttyAMA0";
 
 	mainloop_init();
 
-	if (ibus_init(argv[1]) != 0)
+	while ((opt = getopt(argc, argv, ":bhmr")) != -1)
+	{
+		switch (opt)
+		{
+			case 'b':
+				bluetooth = 1;
+				break;
+			case 'm':
+				mk3 = 0;
+				break;
+			case 'r':
+				camera = 0;
+				break;
+			case 'h':
+			default:
+				fprintf(stderr,
+					"Usage: %s [flags] [serial-port]\n"
+					"\n"
+					"Flags:\n"
+					"\t-b   Car has bluetooth, don't use Phone and Speak buttons\n"
+					"\t-m   Do not do MK3 style CDC announcements\n"
+					"\t-r   Do not switch to camera in reverse gear\n"
+					"\n",
+					argv[0]);
+				return -1;
+		}
+	}
+
+	if (argc > optind)
+	{
+		port = argv[optind];
+	}
+
+	if (ibus_init(port, bluetooth, camera, mk3) != 0)
 	{
 		return -2;
 	}

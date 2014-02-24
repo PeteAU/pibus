@@ -16,6 +16,7 @@
 #include "gpio.h"
 #include "mainloop.h"
 #include "ibus-send.h"
+#include "ibus.h"
 
 #define SOURCE 0
 #define LENGTH 1
@@ -31,11 +32,14 @@ static struct
 	bool send_window_open;
 	bool keyboard_blocked;
 	bool cd_polled;
+	bool bluetooth;
+	bool mk3_announce;
 
 	uint64_t last_byte;
 	int bufPos;
 	unsigned char buf[64];
 	int ifd;
+	int radio_msgs;
 
 	char hhmm[32];
 }
@@ -47,11 +51,14 @@ ibus =
 	.send_window_open = FALSE,
 	.keyboard_blocked = TRUE,
 	.cd_polled = FALSE,
+	.bluetooth = FALSE,
+	.mk3_announce = TRUE,
 
 	.last_byte = 0,
 	.bufPos = 0,
 	.buf = {0,},
 	.ifd = -1,
+	.radio_msgs = 0,
 
 	.hhmm = {0,},
 };
@@ -193,6 +200,14 @@ static void ibus_handle_screen(const unsigned char *msg, int length)
 	}
 }
 
+static void ibus_handle_speak(const unsigned char *msg, int length)
+{
+	if (!ibus.keyboard_blocked && !ibus.bluetooth)
+	{
+		keyboard_generate(KEY_SPACE);
+	}
+}
+
 
 RODATA not_playing[]   = "\x18\x0a\x68\x39\x00\x02\x00\x01\x00\x01\x04\x45";
 RODATA start_playing[] = "\x18\x0a\x68\x39\x02\x09\x00\x01\x00\x01\x04\x4c";
@@ -209,6 +224,9 @@ static void cdchanger_handle_inforeq(const unsigned char *msg, int length)
 	{
 		ibus_send(ibus.ifd, not_playing, 12);
 	}
+
+	/* No more announcements */
+	ibus.cd_polled = TRUE;
 }
 
 static void cdchanger_handle_cdcmode(const unsigned char *msg, int length)
@@ -300,7 +318,7 @@ events[] =
 	{6, "\x68\x04\x3b\x46\x0C\x1d", "screen-toneselectoff", NULL, 0},
 	{4, "\x68\x04\x3b\x46", "screen-unknown", NULL, 0, ibus_handle_screen},
 
-	{6, "\x50\x04\xc8\x3b\x80\x27", "speak", NULL, KEY_SPACE},
+	{6, "\x50\x04\xc8\x3b\x80\x27", "speak", NULL, 0, ibus_handle_speak},
 	{7, "\x44\x05\xBF\x74\x00\xFF\x75", "immobilized", NULL, 0},
 
 	{5, "\x80\x0C\xFF\x24\x01", "time", NULL, 0, ibus_handle_time},
@@ -324,6 +342,12 @@ static void ibus_handle_message(const unsigned char *msg, int length)
 	int i;
 
 	dump_hex(flog, msg, length);
+
+	/* got a message from the radio */
+	if (msg[0] == 0x68)
+	{
+		ibus.radio_msgs++;
+	}
 
 	for (i = 0; i < sizeof(events) / sizeof(events[0]); i++)
 	{
@@ -414,8 +438,13 @@ static void announce_cdc()
 {
 	if (!ibus.cd_polled)
 	{
-		RODATA cdc_announce[] = "\x18\x04\xFF\x02\x01\xE0";
-		ibus_send(ibus.ifd, cdc_announce, 6);
+		/* If the radio is silent, don't do this announcement */
+		if (ibus.radio_msgs != 0)
+		{
+			RODATA cdc_announce[] = "\x18\x04\xFF\x02\x01\xE0";
+			ibus_send(ibus.ifd, cdc_announce, 6);
+			ibus.radio_msgs = 0;
+		}
 	}
 }
 
@@ -430,8 +459,8 @@ static int ibus_tick(void *unused)
 	if (i >= 5)
 	{
 		i = 0;
-		/* 4 minute idle timeout */
-		if (mainloop_get_millisec() - ibus.last_byte > 240000)
+		/* 5 minute idle timeout */
+		if (mainloop_get_millisec() - ibus.last_byte > 300000)
 		{
 			fprintf(flog, "idle timeout\n");
 			power_off();
@@ -444,7 +473,10 @@ static int ibus_tick(void *unused)
 		j = 0;
 		/* flush log & announce CD-changer every 30s */
 		fflush(flog);
-		announce_cdc();
+		if (ibus.mk3_announce)
+		{
+			announce_cdc();
+		}
 	}
 
 	ibus_service_queue(ibus.ifd, ibus.send_window_open);
@@ -453,7 +485,7 @@ static int ibus_tick(void *unused)
 }
 
 
-int ibus_init(const char *port)
+int ibus_init(const char *port, bool bluetooth, bool camera, bool mk3)
 {
 	struct termios newtio;
 
@@ -493,9 +525,31 @@ int ibus_init(const char *port)
 	fflush(flog);
 
 	ibus.last_byte = mainloop_get_millisec();
+	ibus.bluetooth = bluetooth;
+	ibus.mk3_announce = mk3;
 
 	mainloop_input_add(ibus.ifd, FIA_READ, ibus_read, NULL);
 	mainloop_timeout_add(50, ibus_tick, NULL);
+
+	if (bluetooth || (!camera))
+	{
+		unsigned char set[] = "\xd7\x04\xd8\x70\x00\x00";
+
+		if (bluetooth)
+		{
+			/* Tell the ATtiny to ignore the Phone button */
+			set[4] |= 1;
+		}
+
+		if (!camera)
+		{
+			/* Tell the ATtiny to ignore reverse gear */
+			set[4] |= 2;
+		}
+
+		set[5] = set[0] ^ set[1] ^ set[2] ^ set[3] ^ set[4];
+		ibus_send(ibus.ifd, set, 6);
+	}
 
 	return 0;
 }
