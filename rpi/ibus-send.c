@@ -19,7 +19,7 @@ static SList *pkt_list = NULL;
 
 typedef struct
 {
-	unsigned char msg[24];
+	unsigned char msg[32];
 	int length;
 	int countdown;
 }

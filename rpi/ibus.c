@@ -332,8 +332,18 @@ events[] =
 	{5, "\x68\x05\x18\x38\x06",         "cd-change",NULL, 0, cdchanger_handle_diskchange},
 	{7, "\x68\x05\x18\x38\x0a\x01\x46", "cd-prev",  NULL, KEY_COMMA, cdchanger_handle_start},
 	{7, "\x68\x05\x18\x38\x0a\x00\x47", "cd-next",  NULL, KEY_DOT, cdchanger_handle_start},
+
+	/* The most common CDC message */
 	{20,"\x68\x12\x3b\x23\x62\x10\x43\x44\x43\x20\x31\x2d\x30\x34\x20\x20\x20\x20\x20\x4c", "CDC 1-04", NULL, 0, cdchanger_handle_cdcmode},
-	{16,"\x68\x0e\x3b\x23\x62\x10\x54\x52\x20\x30\x34\x20\x20\x20\x20\x2e", "TR 04", NULL, 0, cdchanger_handle_cdcmode}
+
+	/* This one was seen on an Adelaide M3 (onefifty370) */
+	{20,"\x68\x12\x3b\x23\x62\x10\x54\x52\x20\x30\x34\x20\x20\x20\x20\x20\x20\x20\x20\x32", "TR 04L", NULL, 0, cdchanger_handle_cdcmode},
+
+	/* This one was seen on a Lithuanian M3 (realvtk) */
+	{16,"\x68\x0e\x3b\x23\x62\x10\x54\x52\x20\x30\x34\x20\x20\x20\x20\x2e", "TR 04S", NULL, 0, cdchanger_handle_cdcmode},
+
+	/* This one was seen on a German E39 525i 05/2001 MK3 BM24 (DK) */
+	{25,"\x68\x17\x3b\x23\x62\x30\x20\x20\x07\x20\x20\x20\x20\x20\x08\x43\x44\x20\x31\x2d\x30\x34\x20\x20\x25", "CD 1-04", NULL, 0, cdchanger_handle_cdcmode},
 };
 
 
