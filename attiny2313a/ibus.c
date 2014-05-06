@@ -79,6 +79,8 @@ videoSource_t;
 unsigned char buf[32];
 unsigned char bufPos;
 
+unsigned char cdcMessage[12]; /* Custom Msg (ones which aren't hardcoded in this f/w) */
+
 uint16_t ledsOnCount;
 uint16_t bootCount;
 unsigned char relayOnCount;
@@ -344,25 +346,43 @@ void check_packet()
 	/* ===== Custom Message from Raspberry Pi ===== */
 	/* ============================================ */
 
-	else if (bufPos == 6 &&
-		buf[0] == 0xd7 &&
-		buf[2] == 0xd8)
+	/* D7 and D8 just happen not to be used by BMW. */
+	else if (buf[0] == 0xd7 && buf[2] == 0xd8)
 	{
-		/* Format: d7 04 d8 MSGID ARG1 CC */
-		/* D7 and D8 just happen not to be used by BMW. */
-
-		if ((buf[0] ^ buf[1] ^ buf[2] ^ buf[3] ^ buf[4]) == buf[5])
+		switch (bufPos)
 		{
-			switch (buf[3])
-			{
-				case 0x70:	/* set settings */
-					settings = buf[4];
-					break;
-				case 0x71:	/* set video src */
-					videoSource = buf[4];
-					set_video(videoSource);
-					break;
-			}
+			case 6:
+				/* Format: d7 04 d8 MSGID ARG1 CC */
+				if ((buf[0] ^ buf[1] ^ buf[2] ^ buf[3] ^ buf[4]) == buf[5])
+				{
+					switch (buf[3])
+					{
+						case 0x70:	/* set settings */
+							settings = buf[4];
+							break;
+						case 0x71:	/* set video src */
+							videoSource = buf[4];
+							set_video(videoSource);
+							break;
+					}
+				}
+				break;
+
+			case 17:
+				/* Format: d7 17 d8 72 [12 bytes] CC */
+				cdcMessage[0] = buf[4];
+				cdcMessage[1] = buf[5];
+				cdcMessage[2] = buf[6];
+				cdcMessage[3] = buf[7];
+				cdcMessage[4] = buf[8];
+				cdcMessage[5] = buf[9];
+				cdcMessage[6] = buf[10];
+				cdcMessage[7] = buf[11];
+				cdcMessage[8] = buf[12];
+				cdcMessage[9] = buf[13];
+				cdcMessage[10] = buf[14];
+				cdcMessage[11] = buf[15];
+				break;
 		}
 	}
 
@@ -436,6 +456,28 @@ void check_packet()
 		}
 	}
 
+	/* ============================================ */
+	/* ============= Enter CDC Mode  ============== */
+	/* ============================================ */
+
+	else if (cdcMessage[0] && buf[0] == 0x68 && buf[2] == 0x3b)
+	{
+		register unsigned char i;
+		for (i = 0; i < 12; i += 2)
+		{
+			if (buf[cdcMessage[i]] != cdcMessage[i + 1])
+			{
+				goto done;
+			}
+		}
+		if (!(settings & SETTING_NO_CDC))
+		{
+			videoSource = VIDEO_SRC_PI;
+			set_video(videoSource);
+		}
+	}
+
+done:
 	bufPos = 0;
 	TCNT0  = 0x00;
 }
@@ -600,6 +642,7 @@ int main()
 	idleCount = 0;
 	settings = 0;
 	packetSeen = 0;
+	cdcMessage[0] = 0;
 
 	/* ================================================================= */
 	/* === CLOCK ======================================================= */
@@ -607,6 +650,17 @@ int main()
 
 	CLKPR = 0x80;
 	CLKPR = 0x01;			// 4.9152 MHz / 2 = 2.4576 MHz
+
+	PORTD |= D_LED;
+	_delay_ms(500);
+	PORTD &= ~(D_LED);
+	_delay_ms(500);
+	PORTD |= D_LED;
+	_delay_ms(500);
+	PORTD &= ~(D_LED);
+	_delay_ms(500);
+	PORTD |= D_LED;
+	_delay_ms(500);
 
 	sei();
 

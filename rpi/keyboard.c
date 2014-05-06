@@ -7,6 +7,7 @@
 #include <linux/input.h>
 #include <linux/uinput.h>
 #include <time.h>
+#include "keyboard.h"
 
 
 static int kfd;
@@ -48,7 +49,7 @@ int keyboard_init(void)
 	return 0;
 }
 
-int keyboard_generate(unsigned short key)
+static int keyboard_generate_down(unsigned short key)
 {
 	struct input_event ev;
 
@@ -59,12 +60,51 @@ int keyboard_generate(unsigned short key)
 	if (write(kfd, &ev, sizeof(struct input_event)) < 0)
 		return -1;
 
+	return 0;
+}
+
+static int keyboard_generate_up(unsigned short key)
+{
+	struct input_event ev;
+
 	memset(&ev, 0, sizeof(struct input_event));
 	ev.type = EV_KEY;
 	ev.code = key;
 	ev.value = 0;
 	if (write(kfd, &ev, sizeof(struct input_event)) < 0)
-		 return -2;
+		return -1;
+
+	return 0;
+}
+
+int keyboard_generate(unsigned short key)
+{
+	struct input_event ev;
+	unsigned short mod = 0;
+
+	if (key & _CTRL_BIT)
+	{
+		key &= ~(_CTRL_BIT);
+		mod = KEY_LEFTCTRL;
+	}
+
+	if (mod)
+	{
+		if (keyboard_generate_down(mod) < 0)
+			return -1;
+	}
+
+	if (keyboard_generate_down(key) < 0)
+		return -1;
+
+	if (keyboard_generate_up(key) < 0)
+		return -1;
+
+	if (mod)
+	{
+		if (keyboard_generate_up(mod) < 0)
+			return -1;
+	}
 
 	memset(&ev, 0, sizeof(struct input_event));
 	ev.type = EV_SYN;

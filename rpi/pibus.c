@@ -24,10 +24,11 @@ int main(int argc, char **argv)
 	bool mk3 = TRUE;
 	bool camera = TRUE;
 	const char *port = "/dev/ttyAMA0";
+	char *startup = NULL;
 
 	mainloop_init();
 
-	while ((opt = getopt(argc, argv, ":bhmr")) != -1)
+	while ((opt = getopt(argc, argv, "s:bhmr")) != -1)
 	{
 		switch (opt)
 		{
@@ -40,6 +41,9 @@ int main(int argc, char **argv)
 			case 'r':
 				camera = 0;
 				break;
+			case 's':
+				startup = strdup(optarg);
+				break;
 			case 'h':
 			default:
 				fprintf(stderr,
@@ -49,6 +53,7 @@ int main(int argc, char **argv)
 					"\t-b   Car has bluetooth, don't use Phone and Speak buttons\n"
 					"\t-m   Do not do MK3 style CDC announcements\n"
 					"\t-r   Do not switch to camera in reverse gear\n"
+					"\t-s <string>  Send extra string to IBUS at startup\n"
 					"\n",
 					argv[0]);
 				return -1;
@@ -60,7 +65,7 @@ int main(int argc, char **argv)
 		port = argv[optind];
 	}
 
-	if (ibus_init(port, bluetooth, camera, mk3) != 0)
+	if (ibus_init(port, startup, bluetooth, camera, mk3) != 0)
 	{
 		return -2;
 	}

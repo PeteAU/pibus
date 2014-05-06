@@ -76,11 +76,6 @@ static void power_off(void)
 	system("/sbin/poweroff");
 }
 
-static void ibus_handle_poweroff(const unsigned char *msg, int length)
-{
-	power_off();
-}
-
 static void dump_hex(FILE *out, const unsigned char *data, int length)
 {
 	int i;
@@ -91,6 +86,22 @@ static void dump_hex(FILE *out, const unsigned char *data, int length)
 	}
 
 	fprintf(out, "\n");
+}
+
+static void ibus_request_time(void)
+{
+	/* CDChanger asks IKE for Time */
+	RODATA rt[] = "\x18\x05\x80\x41\x01\x01\xDC";
+
+	ibus_send(ibus.ifd, rt, 7);
+}
+
+static void ibus_request_date(void)
+{
+	/* CDChanger asks IKE for Date */
+	RODATA rd[] = "\x18\x05\x80\x41\x02\x01\xDF";
+
+	ibus_send(ibus.ifd, rd, 7);
 }
 
 static void ibus_handle_date(const unsigned char *msg, int length)
@@ -298,6 +309,9 @@ events[] =
 	{6, "\xF0\x04\x68\x48\x14\xC0", "<>", NULL, KEY_TAB},
 	{4, "\xF0\x04\x3B\x49", "rotary", NULL, 0, ibus_handle_rotary},
 
+	{6, "\xF0\x04\x68\x48\x40\x94", "FF", NULL, KEY_RIGHT|_CTRL_BIT},
+	{6, "\xF0\x04\x68\x48\x50\x84", "RR", NULL, KEY_LEFT|_CTRL_BIT},
+
 	{6, "\xF0\x04\x68\x48\x11\xC5", "1", NULL, KEY_SPACE},
 	{6, "\xF0\x04\x68\x48\x02\xD6", "4", NULL, KEY_I},
 
@@ -487,6 +501,20 @@ static int ibus_tick(void *unused)
 		{
 			announce_cdc();
 		}
+
+	}
+
+	/* every 15s */
+	if (j == 0 || j == 300)
+	{
+		if (!ibus.have_time)
+		{
+			ibus_request_time();
+		}
+		if (!ibus.have_date)
+		{
+			ibus_request_date();
+		}
 	}
 
 	ibus_service_queue(ibus.ifd, ibus.send_window_open);
@@ -494,8 +522,31 @@ static int ibus_tick(void *unused)
 	return 1;
 }
 
+static void ibus_send_ascii(const char *cmd)
+{
+	char byte[4];
+	unsigned char data[64];
+	int len = strlen(cmd);
+	int i, j;
 
-int ibus_init(const char *port, bool bluetooth, bool camera, bool mk3)
+	if (len >= (sizeof(data) * 2))
+	{
+		return;
+	}
+
+	for (i = 0, j = 0; i < len; i += 2, j++)
+	{
+		byte[0] = cmd[i];
+		byte[1] = cmd[i+1];
+		byte[2] = 0;
+		data[j] = strtoul(byte, NULL, 16);
+	}
+
+	ibus_send(ibus.ifd, data, j);
+	fflush(flog);
+}
+
+int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool mk3)
 {
 	struct termios newtio;
 
@@ -559,6 +610,12 @@ int ibus_init(const char *port, bool bluetooth, bool camera, bool mk3)
 
 		set[5] = set[0] ^ set[1] ^ set[2] ^ set[3] ^ set[4];
 		ibus_send(ibus.ifd, set, 6);
+	}
+
+	if (startup)
+	{
+		ibus_send_ascii(startup);
+		free(startup);
 	}
 
 	return 0;
