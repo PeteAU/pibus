@@ -145,7 +145,6 @@ static void ibus_handle_time(const unsigned char *msg, int length)
 1/26/2010 5:04:11 PM.303:  80 0F E7 24 02 00 30 31 2F 32 36 2F 32 30 31 30 48
 1/26/2010 5:04:11 PM.303:  IKE  --> ANZV: Update Text:  Layout=Date  Fld0,EndTx="01/26/2010"
 */
-//	char buf[32];
 	int hour;
 
 	if (length < 13)
@@ -162,9 +161,6 @@ static void ibus_handle_time(const unsigned char *msg, int length)
 
 	snprintf(ibus.hhmm, sizeof(ibus.hhmm), "%02d:%c%c", hour, msg[9], msg[10]);
 	ibus.have_time = TRUE;
-
-//	sprintf(buf, "date -s %s", ibus.hhmm);
-//	system(buf);
 
 	fprintf(flog, "time: %s\n", ibus.hhmm);
 }
@@ -242,13 +238,6 @@ static void cdchanger_handle_inforeq(const unsigned char *msg, int length)
 
 static void cdchanger_handle_cdcmode(const unsigned char *msg, int length)
 {
-	//RODATA flash_led[] = "\xc8\x04\xe7\x2b\x30\x30";
-	//ibus_send(ibus.ifd, flash_led, 6);
-
-	//RODATA rpi_msg[] = "\x68\x12\x3b\x23\x62\x10Raspberry Pi\x20\x67";
-	// 52 61 73 70 62 65 72 72 79 20 50 69
-	//ibus_send(ibus.ifd, rpi_msg, 20);
-
 	ibus.keyboard_blocked = FALSE;
 	ibus.playing = TRUE;
 }
@@ -303,8 +292,6 @@ events[] =
 {
 	//{5, "\x50\x03\xC8\x01\x9A", "r/t", NULL, KEY_TAB},
 	{6, "\xF0\x04\xFF\x48\x07\x44", "clock", NULL, KEY_ESC},
-	//{6, "\xF0\x04\x68\x48\x10\xC4", "left", NULL, 0},
-	//{6, "\xF0\x04\x68\x48\x00\xD4", "right", NULL, 0},
 	{6, "\xF0\x04\x3B\x48\x05\x82", "enter", NULL, KEY_ENTER},
 	{6, "\xF0\x04\x68\x48\x14\xC0", "<>", NULL, KEY_TAB},
 	{4, "\xF0\x04\x3B\x49", "rotary", NULL, 0, ibus_handle_rotary},
