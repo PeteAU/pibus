@@ -43,6 +43,7 @@ static struct
 	int radio_msgs;
 	int cdc_info_tag;
 	int cdc_info_interval;
+	int gpio_number;
 
 	time_t start;
 
@@ -67,6 +68,7 @@ ibus =
 	.radio_msgs = 0,
 	.cdc_info_tag = -1,
 	.cdc_info_interval = 0,
+	.gpio_number = 0,
 
 	.start = 0,
 
@@ -652,7 +654,7 @@ static int ibus_tick(void *unused)
 		}
 	}
 
-	ibus_service_queue(ibus.ifd, ibus.send_window_open);
+	ibus_service_queue(ibus.ifd, ibus.send_window_open, ibus.gpio_number);
 
 	return 1;
 }
@@ -681,7 +683,7 @@ static void ibus_send_ascii(const char *cmd)
 	fflush(flog);
 }
 
-int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool mk3, int cdc_info_interval)
+int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool mk3, int cdc_info_interval, int gpio_number)
 {
 	struct termios newtio;
 	struct timespec ts;
@@ -728,6 +730,7 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 	ibus.bluetooth = bluetooth;
 	ibus.mk3_announce = mk3;
 	ibus.cdc_info_interval = cdc_info_interval;
+	ibus.gpio_number = gpio_number;
 
 	mainloop_input_add(ibus.ifd, FIA_READ, ibus_read, NULL);
 	mainloop_timeout_add(50, ibus_tick, NULL);

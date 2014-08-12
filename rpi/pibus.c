@@ -23,13 +23,14 @@ int main(int argc, char **argv)
 	bool bluetooth = FALSE;
 	bool mk3 = TRUE;
 	bool camera = TRUE;
+	int gpio_number = 18;
 	const char *port = "/dev/ttyAMA0";
 	char *startup = NULL;
 	int cdcinterval = 0;
 
 	mainloop_init();
 
-	while ((opt = getopt(argc, argv, "c:s:bhmr")) != -1)
+	while ((opt = getopt(argc, argv, "c:g:s:bhmr")) != -1)
 	{
 		switch (opt)
 		{
@@ -38,6 +39,9 @@ int main(int argc, char **argv)
 				break;
 			case 'c':
 				cdcinterval = atoi(optarg);
+				break;
+			case 'g':
+				gpio_number = atoi(optarg);
 				break;
 			case 'm':
 				mk3 = 0;
@@ -56,6 +60,7 @@ int main(int argc, char **argv)
 					"Flags:\n"
 					"\t-b           Car has bluetooth, don't use Phone and Speak buttons\n"
 					"\t-c <time>    Force CDC-info replies every <time> seconds\n"
+					"\t-g <number>  GPIO number to use for IBUS line monitor\n"
 					"\t-m           Do not do MK3 style CDC announcements\n"
 					"\t-r           Do not switch to camera in reverse gear\n"
 					"\t-s <string>  Send extra string to IBUS at startup\n"
@@ -70,7 +75,7 @@ int main(int argc, char **argv)
 		port = argv[optind];
 	}
 
-	if (ibus_init(port, startup, bluetooth, camera, mk3, cdcinterval) != 0)
+	if (ibus_init(port, startup, bluetooth, camera, mk3, cdcinterval, gpio_number) != 0)
 	{
 		return -2;
 	}

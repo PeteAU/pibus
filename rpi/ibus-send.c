@@ -30,7 +30,7 @@ packet;
 
 /* called every 50ms */
 
-void ibus_service_queue(int ifd, bool can_send)
+void ibus_service_queue(int ifd, bool can_send, int gpio_number)
 {
 	SList *list;
 	packet *pkt;
@@ -51,8 +51,8 @@ void ibus_service_queue(int ifd, bool can_send)
 		return;
 	}
 
-	/* Only send if GPIO 18 is high */
-	if (pkt_list && !gpio_read(18))
+	/* Only send if GPIO 18 (pibus2/3) or GPIO 17 (pibus4) is high */
+	if (pkt_list && !gpio_read(gpio_number))
 	{
 		ibus_log("ibus_service_queue(): ibus/gpio busy - waiting\n");
 		return;
