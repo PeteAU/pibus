@@ -86,11 +86,11 @@ void ibus_log(char *fmt, ...)
 	int len;
 
 	clock_gettime(CLOCK_MONOTONIC, &ts);
-	sprintf(buf, "%7.7lu ", ts.tv_sec - ibus.start);
-	len = 8;
+	sprintf(buf, "%6.6lu ", ts.tv_sec - ibus.start);
+	len = 7;
 
 	va_start(args, fmt);
-	len += vsnprintf(buf + 8, sizeof(buf) - 9, fmt, args);
+	len += vsnprintf(buf + 7, sizeof(buf) - 8, fmt, args);
 	va_end(args);
 
 	buf[sizeof(buf) - 1] = '\0';
