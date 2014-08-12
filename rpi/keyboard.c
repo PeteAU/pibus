@@ -18,7 +18,7 @@ int keyboard_init(void)
 	struct uinput_user_dev uidev;
 	int i;
 
-	kfd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
+	kfd = open("/dev/uinput", O_WRONLY);
 	if (kfd < 0)
 		return -1;
 
@@ -112,6 +112,8 @@ int keyboard_generate(unsigned short key)
 	ev.value = 0;
 	if (write(kfd, &ev, sizeof(struct input_event)) < 0)
 		 return -3;
+
+	fdatasync(kfd);
 
 	return 0;
 }
