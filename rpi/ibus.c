@@ -158,7 +158,7 @@ static void ibus_request_time(void)
 	/* CDChanger asks IKE for Time */
 	RODATA rt[] = "\x18\x05\x80\x41\x01\x01\xDC";
 
-	ibus_send(ibus.ifd, rt, 7);
+	ibus_send(ibus.ifd, rt, 7, ibus.gpio_number);
 }
 
 static void ibus_request_date(void)
@@ -166,7 +166,7 @@ static void ibus_request_date(void)
 	/* CDChanger asks IKE for Date */
 	RODATA rd[] = "\x18\x05\x80\x41\x02\x01\xDF";
 
-	ibus_send(ibus.ifd, rd, 7);
+	ibus_send(ibus.ifd, rd, 7, ibus.gpio_number);
 }
 
 static void ibus_set_time_and_date(void)
@@ -299,11 +299,11 @@ static void cdchanger_send_inforeq(void)
 	if (ibus.playing)
 	{
 		/* This un-mutes the line-in */
-		ibus_send(ibus.ifd, start_playing, 12);
+		ibus_send(ibus.ifd, start_playing, 12, ibus.gpio_number);
 	}
 	else
 	{
-		ibus_send(ibus.ifd, not_playing, 12);
+		ibus_send(ibus.ifd, not_playing, 12, ibus.gpio_number);
 	}
 
 	/* No more announcements */
@@ -340,19 +340,19 @@ static void cdchanger_handle_cdcmode(const unsigned char *msg, int length)
 
 static void cdchanger_handle_stop(const unsigned char *msg, int length)
 {
-	ibus_send(ibus.ifd, not_playing, 12);
+	ibus_send(ibus.ifd, not_playing, 12, ibus.gpio_number);
 	ibus.playing = FALSE;
 }
 
 static void cdchanger_handle_pause(const unsigned char *msg, int length)
 {
-	ibus_send(ibus.ifd, pause_playing, 12);
+	ibus_send(ibus.ifd, pause_playing, 12, ibus.gpio_number);
 	ibus.playing = FALSE;
 }
 
 static void cdchanger_handle_start(const unsigned char *msg, int length)
 {
-	ibus_send(ibus.ifd, start_playing, 12);
+	ibus_send(ibus.ifd, start_playing, 12, ibus.gpio_number);
 	ibus.playing = TRUE;
 }
 
@@ -363,14 +363,14 @@ static void cdchanger_handle_diskchange(const unsigned char *msg, int length)
 		return;
 	}
 
-	ibus_send(ibus.ifd, start_playing, 12);
+	ibus_send(ibus.ifd, start_playing, 12, ibus.gpio_number);
 }
 
 static void cdchanger_handle_poll(const unsigned char *msg, int length)
 {
 	RODATA cdc_im_here[] = "\x18\x04\xFF\x02\x00\xE1";
 
-	ibus_send(ibus.ifd, cdc_im_here, 6);
+	ibus_send(ibus.ifd, cdc_im_here, 6, ibus.gpio_number);
 	
 	ibus.cd_polled = TRUE;
 }
@@ -565,7 +565,7 @@ static void ibus_read(int condition, void *unused)
 			return;
 		}
 
-		if (now - ibus.last_byte > 100)
+		if (now - ibus.last_byte > 64)
 		{
 			ibus.bufPos = 0;
 		}
@@ -583,7 +583,6 @@ static void ibus_read(int condition, void *unused)
 		{
 			ibus_handle_message(ibus.buf, ibus.bufPos);
 			ibus.bufPos = 0;
-			ibus.send_window_open = TRUE;
 		}
 	}
 
@@ -603,7 +602,7 @@ static void announce_cdc()
 		if (ibus.radio_msgs != 0)
 		{
 			RODATA cdc_announce[] = "\x18\x04\xFF\x02\x01\xE0";
-			ibus_send(ibus.ifd, cdc_announce, 6);
+			ibus_send(ibus.ifd, cdc_announce, 6, ibus.gpio_number);
 			ibus.radio_msgs = 0;
 		}
 	}
@@ -654,7 +653,19 @@ static int ibus_tick(void *unused)
 		}
 	}
 
-	ibus_service_queue(ibus.ifd, ibus.send_window_open, ibus.gpio_number);
+	if (ibus.gpio_number > 0)
+	{
+		ibus_service_queue(ibus.ifd, ibus.send_window_open, ibus.gpio_number);
+
+		/* If >50ms (2 ticks) has passed without receiving any bytes,
+		 * we have an opportunity to transmit (bus is quiet).
+		 */
+
+		if (!ibus.send_window_open && ibus.bufPos == 0)
+		{
+			ibus.send_window_open = TRUE;
+		}
+	}
 
 	return 1;
 }
@@ -679,7 +690,7 @@ static void ibus_send_ascii(const char *cmd)
 		data[j] = strtoul(byte, NULL, 16);
 	}
 
-	ibus_send(ibus.ifd, data, j);
+	ibus_send(ibus.ifd, data, j, ibus.gpio_number);
 	fflush(flog);
 }
 
@@ -752,7 +763,7 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 		}
 
 		set[5] = set[0] ^ set[1] ^ set[2] ^ set[3] ^ set[4];
-		ibus_send(ibus.ifd, set, 6);
+		ibus_send(ibus.ifd, set, 6, ibus.gpio_number);
 	}
 
 	if (startup)

@@ -111,7 +111,7 @@ static void ibus_add_to_queue(const unsigned char *msg, int length, int countdow
 	pkt_list = slist_append(pkt_list, pkt);
 }
 
-void ibus_send(int ifd, const unsigned char *msg, int length)
+void ibus_send(int ifd, const unsigned char *msg, int length, int gpio_number)
 {
 	unsigned char sum;
 	int i;
@@ -129,5 +129,8 @@ void ibus_send(int ifd, const unsigned char *msg, int length)
 		ibus_log("ibus_send: \033[31mbad checksum\033[m\n");
 	}
 
-	ibus_add_to_queue(msg, length, 1);
+	if (gpio_number > 0)
+	{
+		ibus_add_to_queue(msg, length, 1);
+	}
 }

@@ -60,7 +60,7 @@ int main(int argc, char **argv)
 					"Flags:\n"
 					"\t-b           Car has bluetooth, don't use Phone and Speak buttons\n"
 					"\t-c <time>    Force CDC-info replies every <time> seconds\n"
-					"\t-g <number>  GPIO number to use for IBUS line monitor\n"
+					"\t-g <number>  GPIO number to use for IBUS line monitor (0 = Use TH3122)\n"
 					"\t-m           Do not do MK3 style CDC announcements\n"
 					"\t-r           Do not switch to camera in reverse gear\n"
 					"\t-s <string>  Send extra string to IBUS at startup\n"
