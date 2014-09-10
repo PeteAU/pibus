@@ -23,6 +23,7 @@ int main(int argc, char **argv)
 	bool bluetooth = FALSE;
 	bool mk3 = TRUE;
 	bool camera = TRUE;
+	int hw_version = 0;
 	int gpio_number = 18;
 	const char *port = "/dev/ttyAMA0";
 	char *startup = NULL;
@@ -30,7 +31,7 @@ int main(int argc, char **argv)
 
 	mainloop_init();
 
-	while ((opt = getopt(argc, argv, "c:g:s:bhmr")) != -1)
+	while ((opt = getopt(argc, argv, "c:g:s:t:bhmr")) != -1)
 	{
 		switch (opt)
 		{
@@ -52,6 +53,9 @@ int main(int argc, char **argv)
 			case 's':
 				startup = strdup(optarg);
 				break;
+			case 'v':
+				hw_version = atoi(optarg);
+				break;
 			case 'h':
 			default:
 				fprintf(stderr,
@@ -64,6 +68,7 @@ int main(int argc, char **argv)
 					"\t-m           Do not do MK3 style CDC announcements\n"
 					"\t-r           Do not switch to camera in reverse gear\n"
 					"\t-s <string>  Send extra string to IBUS at startup\n"
+					"\t-v <number>  Set PiBUS hardware version\n"
 					"\n",
 					argv[0]);
 				return -1;
@@ -75,7 +80,7 @@ int main(int argc, char **argv)
 		port = argv[optind];
 	}
 
-	if (ibus_init(port, startup, bluetooth, camera, mk3, cdcinterval, gpio_number) != 0)
+	if (ibus_init(port, startup, bluetooth, camera, mk3, cdcinterval, gpio_number, hw_version) != 0)
 	{
 		return -2;
 	}
