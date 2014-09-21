@@ -1,5 +1,5 @@
 /*
- * pibus Copyright (c) 2013 Peter Zelezny
+ * pibus Copyright (c) 2013,2014 Peter Zelezny
  * All Rights Reserved
  */
 
@@ -28,10 +28,11 @@ int main(int argc, char **argv)
 	const char *port = "/dev/ttyAMA0";
 	char *startup = NULL;
 	int cdcinterval = 0;
+	bool gpio_changed = FALSE;
 
 	mainloop_init();
 
-	while ((opt = getopt(argc, argv, "c:g:s:t:bhmr")) != -1)
+	while ((opt = getopt(argc, argv, "c:g:s:v:bhmr")) != -1)
 	{
 		switch (opt)
 		{
@@ -43,6 +44,7 @@ int main(int argc, char **argv)
 				break;
 			case 'g':
 				gpio_number = atoi(optarg);
+				gpio_changed = TRUE;
 				break;
 			case 'm':
 				mk3 = 0;
@@ -80,6 +82,17 @@ int main(int argc, char **argv)
 		port = argv[optind];
 	}
 
+	if (!gpio_changed && hw_version >= 4)
+	{
+		gpio_number = 17;
+	}
+
+	if (gpio_init() != 0)
+	{
+		fprintf(stderr, "Can't init gpio\r\n");
+		return -4;
+	}
+
 	if (ibus_init(port, startup, bluetooth, camera, mk3, cdcinterval, gpio_number, hw_version) != 0)
 	{
 		return -2;
@@ -89,12 +102,6 @@ int main(int argc, char **argv)
 	{
 		fprintf(stderr, "Can't open keyboard\r\n");
 		return -3;
-	}
-
-	if (gpio_init() != 0)
-	{
-		fprintf(stderr, "Can't init gpio\r\n");
-		return -4;
 	}
 
 	mainloop();

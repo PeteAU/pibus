@@ -6,7 +6,16 @@
 
 #define BCM2708_PERI_BASE        0x20000000
 #define GPIO_BASE                (BCM2708_PERI_BASE + 0x200000) /* GPIO controller */
-#define GPIO_PIN_LEVEL0_OFFSET	((0x34/4))
+
+#define GPIO_PIN_L0_FSEL0_OFFSET	(0)		/* GPFSEL0 */
+#define GPIO_PIN_L0_FSEL1_OFFSET	((0x04/4))	/* GPFSEL1 */
+#define GPIO_PIN_L0_SET_OFFSET		((0x1C/4))	/* GPSET0 */
+#define GPIO_PIN_L0_CLR_OFFSET		((0x28/4))	/* GPCLR0 */
+#define GPIO_PIN_L0_READ_OFFSET		((0x34/4))	/* GPLEV0 */
+
+#define GPIO_INP_GPIO(g) *(gpio+((g)/10)) &= ~(7<<(((g)%10)*3))
+#define GPIO_OUT_GPIO(g) *(gpio+((g)/10)) |=  (1<<(((g)%10)*3))
+
 #define BLOCK_SIZE (4*1024)
 
 
@@ -52,15 +61,58 @@ int gpio_init()
 #endif
 }
 
+#ifndef __i386__
+
+void gpio_set_input(int gpio_number)
+{
+	GPIO_INP_GPIO(gpio_number);
+}
+
+void gpio_set_output(int gpio_number)
+{
+	GPIO_INP_GPIO(gpio_number);
+	GPIO_OUT_GPIO(gpio_number);
+}
+
 int gpio_read(int gpio_number)
 {
-#ifdef __i386__
-	return 1;
-#else
 	/* read GPIO 0-31 */
-	return ((*(gpio + GPIO_PIN_LEVEL0_OFFSET)) & (1 << gpio_number)) ? 1 : 0;
-#endif
+	return ((*(gpio + GPIO_PIN_L0_READ_OFFSET)) & (1 << gpio_number)) ? 1 : 0;
 }
+
+void gpio_write(int gpio_number, int value)
+{
+	/* write GPIO 0-31 */
+	if (value)
+	{
+		*(gpio + GPIO_PIN_L0_SET_OFFSET) = (1 << gpio_number);
+	}
+	else
+	{
+		*(gpio + GPIO_PIN_L0_CLR_OFFSET) = (1 << gpio_number);
+	}
+}
+
+#else
+
+void gpio_set_input(int gpio_number)
+{
+}
+
+void gpio_set_output(int gpio_number)
+{
+}
+
+int gpio_read(int gpio_number)
+{
+	return 1;
+}
+
+void gpio_write(int gpio_number, int value)
+{
+}
+
+#endif
 
 void gpio_cleanup()
 {

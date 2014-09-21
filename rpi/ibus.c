@@ -24,6 +24,22 @@
 #define DEST 2
 #define DATA 3
 
+/* Based on PiBUS V4.01 hardware */
+
+#define GPIO_NSLP_CTL		22
+#define GPIO_PIN17_CTL		23
+#define GPIO_LED_CTL		24
+#define GPIO_RELAY_CTL		27
+
+
+typedef enum
+{
+	VIDEO_SRC_BMW = 0,
+	VIDEO_SRC_PI = 1,
+	VIDEO_SRC_CAMERA = 2,
+	VIDEO_SRC_LAST = 2
+}
+videoSource_t;
 
 static struct
 {
@@ -34,6 +50,7 @@ static struct
 	bool keyboard_blocked;
 	bool cd_polled;
 	bool bluetooth;
+	bool have_camera;
 	bool mk3_announce;
 
 	uint64_t last_byte;
@@ -46,6 +63,7 @@ static struct
 	int gpio_number;
 	int hw_version;
 
+	videoSource_t videoSource;
 	time_t start;
 
 	char hhmm[24];
@@ -60,6 +78,7 @@ ibus =
 	.keyboard_blocked = TRUE,
 	.cd_polled = FALSE,
 	.bluetooth = FALSE,
+	.have_camera = TRUE,
 	.mk3_announce = TRUE,
 
 	.last_byte = 0,
@@ -72,6 +91,7 @@ ibus =
 	.gpio_number = 0,
 	.hw_version = 0,
 
+	.videoSource = VIDEO_SRC_BMW,
 	.start = 0,
 
 	.hhmm = {0,},
@@ -115,6 +135,56 @@ static void power_off(void)
 		system("/usr/sbin/poweroff");
 	else
 		system("/sbin/poweroff");
+}
+
+static void ibus_set_video(videoSource_t src)
+{
+	switch (src)
+	{
+		case VIDEO_SRC_BMW:
+			gpio_write(GPIO_RELAY_CTL, 0);	/* relay off */
+			gpio_write(GPIO_PIN17_CTL, 0);	/* pin17 off */
+			break;
+
+		case VIDEO_SRC_PI:
+			gpio_write(GPIO_RELAY_CTL, 0);	/* relay off */
+			gpio_write(GPIO_PIN17_CTL, 1);	/* pin17 on */
+			break;
+
+		case VIDEO_SRC_CAMERA:
+			gpio_write(GPIO_RELAY_CTL, 1);	/* relay on */
+			gpio_write(GPIO_PIN17_CTL, 1);	/* pin17 on */
+			break;
+	}
+}
+
+static void ibus_handle_phone(const unsigned char *msg, int length)
+{
+	if (ibus.hw_version >= 4 && !ibus.bluetooth)
+	{
+		ibus.videoSource++;
+		if (ibus.videoSource > VIDEO_SRC_LAST)
+		{
+			ibus.videoSource = 0;
+		}
+		ibus_set_video(ibus.videoSource);
+	}
+}
+
+static void ibus_handle_ike_sensor(const unsigned char *msg, int length)
+{
+	if (ibus.hw_version >= 4 && ibus.have_camera)
+	{
+		switch (msg[5] >> 4)
+		{
+			case 1:
+				ibus_set_video(VIDEO_SRC_CAMERA);
+				break;
+			default:
+				ibus_set_video(ibus.videoSource);
+				break;
+		}
+	}
 }
 
 static bool ibus_good_checksum(const unsigned char *msg, int length)
@@ -264,6 +334,12 @@ static void ibus_handle_rotary(const unsigned char *msg, int length)
 static void ibus_handle_outsidekey(const unsigned char *msg, int length)
 {
 	ibus.keyboard_blocked = TRUE;
+
+	if (ibus.hw_version >= 4)
+	{
+		ibus.videoSource = VIDEO_SRC_BMW;
+		ibus_set_video(ibus.videoSource);
+	}
 }
 
 static void ibus_handle_screen(const unsigned char *msg, int length)
@@ -338,6 +414,12 @@ static void cdchanger_handle_cdcmode(const unsigned char *msg, int length)
 {
 	ibus.keyboard_blocked = FALSE;
 	ibus.playing = TRUE;
+
+	if (ibus.hw_version >= 4)
+	{
+		ibus.videoSource = VIDEO_SRC_PI;
+		ibus_set_video(ibus.videoSource);
+	}
 }
 
 static void cdchanger_handle_stop(const unsigned char *msg, int length)
@@ -476,6 +558,10 @@ events[] =
 	{5, "\x68\x05\x18\x38\x06",         "cd-change",NULL, 0, cdchanger_handle_diskchange},
 	{7, "\x68\x05\x18\x38\x0a\x01\x46", "cd-prev",  NULL, KEY_COMMA, cdchanger_handle_start},
 	{7, "\x68\x05\x18\x38\x0a\x00\x47", "cd-next",  NULL, KEY_DOT, cdchanger_handle_start},
+
+	/* These are handled by the ATtiny on V2 and V3 boards */
+	{6, "\xF0\x04\xFF\x48\x08\x4B", "phone", NULL, 0, ibus_handle_phone},
+	{4, "\x80\x0A\xBF\x13", "IKE sensor", NULL, 0, ibus_handle_ike_sensor},
 
 #if 0
 	/* The most common CDC message */
@@ -618,7 +704,7 @@ static int ibus_tick(void *unused)
 	static int j = 0;
 
 	i++;
-	if (i >= 5)
+	if (i >= 20)
 	{
 		i = 0;
 		/* 5 minute idle timeout */
@@ -626,6 +712,18 @@ static int ibus_tick(void *unused)
 		{
 			ibus_log("idle timeout\n");
 			power_off();
+		}
+	}
+
+	if (ibus.hw_version >= 4)
+	{
+		if (i < 2)
+		{
+			gpio_write(GPIO_LED_CTL, 1);
+		}
+		else
+		{
+			gpio_write(GPIO_LED_CTL, 0);
 		}
 	}
 
@@ -741,6 +839,7 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 
 	ibus.last_byte = mainloop_get_millisec();
 	ibus.bluetooth = bluetooth;
+	ibus.have_camera = camera;
 	ibus.mk3_announce = mk3;
 	ibus.cdc_info_interval = cdc_info_interval;
 	ibus.gpio_number = gpio_number;
@@ -749,7 +848,26 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 	mainloop_input_add(ibus.ifd, FIA_READ, ibus_read, NULL);
 	mainloop_timeout_add(50, ibus_tick, NULL);
 
-	if (bluetooth || (!camera))
+	/* gpio 15 is the UART RX, don't change its direction. */
+	if (gpio_number != 15 && gpio_number != 0)
+	{
+		/* The IBUS monitor pin must be an input (should already be) */
+		gpio_set_input(gpio_number);
+	}
+
+	if (hw_version >= 4)
+	{
+		gpio_write(GPIO_NSLP_CTL, 1);	/* Wake up the transceiver */
+		gpio_write(GPIO_PIN17_CTL, 0);
+		gpio_write(GPIO_LED_CTL, 1);
+		gpio_write(GPIO_RELAY_CTL, 0);
+
+		gpio_set_output(GPIO_NSLP_CTL);
+		gpio_set_output(GPIO_PIN17_CTL);
+		gpio_set_output(GPIO_LED_CTL);
+		gpio_set_output(GPIO_RELAY_CTL);
+	}
+	else if (bluetooth || (!camera))
 	{
 		unsigned char set[] = "\xd7\x04\xd8\x70\x00\x00";
 

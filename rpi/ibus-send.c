@@ -51,8 +51,8 @@ void ibus_service_queue(int ifd, bool can_send, int gpio_number)
 		return;
 	}
 
-	/* Only send if GPIO 18 (pibus2/3) or GPIO 17 (pibus4) is high */
-	if (pkt_list && !gpio_read(gpio_number))
+	/* Only send if GPIO 15 (UART RX) is high (idle state) */
+	if (pkt_list && !gpio_read(15))
 	{
 		ibus_log("ibus_service_queue(): ibus/gpio busy - waiting\n");
 		return;
