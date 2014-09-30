@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include "gpio.h"
 
 #define BCM2708_PERI_BASE        0x20000000
 #define GPIO_BASE                (BCM2708_PERI_BASE + 0x200000) /* GPIO controller */
@@ -15,6 +16,10 @@
 
 #define GPIO_INP_GPIO(g) *(gpio+((g)/10)) &= ~(7<<(((g)%10)*3))
 #define GPIO_OUT_GPIO(g) *(gpio+((g)/10)) |=  (1<<(((g)%10)*3))
+
+#define GPIO_PUD	*(gpio+37)	/* Pull up/down */
+#define GPIO_PUDCLK0	*(gpio+38)	/* Pull up/down clock */
+#define GPIO_PUDCLK1	*(gpio+39)	/* Pull up/down clock */
 
 #define BLOCK_SIZE (4*1024)
 
@@ -93,6 +98,18 @@ void gpio_write(int gpio_number, int value)
 	}
 }
 
+void gpio_set_pull(int gpio_number, pull_type pt)
+{
+	GPIO_PUD = pt;
+	usleep(64000);
+
+	GPIO_PUDCLK0 = (1 << gpio_number);
+	usleep(64000);
+
+	GPIO_PUD = 0;
+	GPIO_PUDCLK0 = 0;
+}
+
 #else
 
 void gpio_set_input(int gpio_number)
@@ -109,6 +126,10 @@ int gpio_read(int gpio_number)
 }
 
 void gpio_write(int gpio_number, int value)
+{
+}
+
+void gpio_set_pull(int gpio_number, pull_type pt)
 {
 }
 

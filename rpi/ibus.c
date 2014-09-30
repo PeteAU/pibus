@@ -853,6 +853,11 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 	{
 		/* The IBUS monitor pin must be an input (should already be) */
 		gpio_set_input(gpio_number);
+
+		if (hw_version >= 4)
+		{
+			gpio_set_pull(gpio_number, PULL_UP);
+		}
 	}
 
 	if (hw_version >= 4)
