@@ -342,6 +342,14 @@ static void ibus_handle_outsidekey(const unsigned char *msg, int length)
 	}
 }
 
+static void ibus_handle_tonekey(const unsigned char *msg, int length)
+{
+	if (ibus.hw_version >= 4)
+	{
+		ibus_handle_outsidekey(msg, length);
+	}
+}
+
 static void ibus_handle_screen(const unsigned char *msg, int length)
 {
 	if (length > 5)
@@ -517,6 +525,7 @@ events[] =
 	{6, "\xF0\x04\x3B\x48\x05\x82", "enter", NULL, KEY_ENTER},
 	{6, "\xF0\x04\x68\x48\x14\xC0", "<>", NULL, KEY_TAB},
 	{4, "\xF0\x04\x3B\x49", "rotary", NULL, 0, ibus_handle_rotary},
+	{6, "\xF0\x04\x68\x48\x04\xD0", "tone", NULL, 0, ibus_handle_tonekey},
 
 	{6, "\xF0\x04\x68\x48\x40\x94", "FF", NULL, KEY_RIGHT|_CTRL_BIT},
 	{6, "\xF0\x04\x68\x48\x50\x84", "RR", NULL, KEY_LEFT|_CTRL_BIT},
