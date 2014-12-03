@@ -287,8 +287,9 @@ void check_packet()
 	/* ============================================ */
 
 	// 80 0A BF 13 XX XX XX XX XX XX XX CS
+	// 80 09 BF 13 XX XX XX XX XX XX CS
 
-	else if (bufPos == 12 &&
+	else if ((bufPos == 11 || bufPos == 12) &&
 		buf[0] == 0x80 &&
 		buf[2] == 0xBF &&
 		buf[3] == 0x13 &&
@@ -438,6 +439,8 @@ void check_packet()
 		{
 			switch (buf[4])
 			{
+				case 0x04:	/* tone */
+				case 0x20:	/* select */
 				case 0x21:	/* AM */
 				case 0x23:	/* mode */
 				case 0x31:	/* FM */
