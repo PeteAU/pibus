@@ -137,6 +137,7 @@ void mainloop(void)
 	struct timeval timeout;
 	socketevent *se;
 	timerevent *te;
+	int nfds;
 	fd_set rd, wd, ex;
 	SList *list;
 	uint64_t shortest, delay;
@@ -144,6 +145,7 @@ void mainloop(void)
 
 	while (!done)
 	{
+		nfds = 0;
 		FD_ZERO(&rd);
 		FD_ZERO(&wd);
 		FD_ZERO(&ex);
@@ -158,6 +160,8 @@ void mainloop(void)
 				FD_SET(se->sok, &wd);
 			if (se->eexcept)
 				FD_SET(se->sok, &ex);
+			if (se->sok > nfds)
+				nfds = se->sok;
 			list = list->next;
 		}
 
@@ -185,7 +189,7 @@ void mainloop(void)
 			timeout.tv_usec = 0;
 		}
 
-		select(FD_SETSIZE, &rd, &wd, &ex, &timeout);
+		select(nfds + 1, &rd, &wd, &ex, &timeout);
 
 		/* set all checked flags to false */
 		list = se_list;
