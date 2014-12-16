@@ -26,7 +26,6 @@ typedef struct
 	bool sync;
 	int tag;
 	int transmit_count;
-	bool interleaved;
 }
 packet;
 
@@ -94,7 +93,6 @@ bool ibus_service_queue(int ifd, bool can_send, int gpio_number)
 			write(ifd, pkt->msg, pkt->length);
 
 			pkt->transmit_count++;
-			pkt->interleaved = FALSE;
 
 			/* send again if it doesn't echo back within 0.5 seconds (10 * 50ms) */
 			pkt->countdown = 10;
@@ -123,28 +121,10 @@ void ibus_remove_from_queue(const unsigned char *msg, int length)
 		pkt = list->data;
 		if (pkt->length == length && memcmp(pkt->msg, msg, length) == 0)
 		{
-			if (!pkt->interleaved)
-			{
-				ibus_log("remove_queue(%d): success - dequeued\n", length);
-				pkt_list = slist_remove(pkt_list, pkt);
-				free (pkt);
-				return;
-			}
-
-			ibus_log("remove_queue(%d): interleaved txcount=%d\n", length, pkt->transmit_count);
-			pkt->countdown = 0;
-			break;
-		}
-		list = list->next;
-	}
-
-	list = pkt_list;
-	while (list)
-	{
-		pkt = list->data;
-		if (pkt->transmit_count)
-		{
-			pkt->interleaved = TRUE;
+			ibus_log("remove_queue(%d): success - dequeued\n", length);
+			pkt_list = slist_remove(pkt_list, pkt);
+			free (pkt);
+			return;
 		}
 		list = list->next;
 	}
@@ -196,7 +176,6 @@ static void ibus_add_to_queue(const unsigned char *msg, int length, int countdow
 	pkt->sync = sync;
 	pkt->tag = tag;
 	pkt->transmit_count = 0;
-	pkt->interleaved = FALSE;
 
 	if (prepend)
 		pkt_list = slist_prepend(pkt_list, pkt);
