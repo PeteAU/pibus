@@ -256,6 +256,11 @@ void ibus_dump_hex(FILE *out, const unsigned char *data, int length, const char 
 	{
 		fprintf(out, " Radio status reply 0x%02x", data[4]);
 	}
+	else if (length == 7 && memcmp(data, "\x68\x05\xbf\x02", 4) == 0)
+	{
+		fprintf(out, " Radio status reply 0x%02x", data[4]);
+	}
+
 	else if (length == 8 && memcmp(data, "\x68\x06\xf0\x38\x01\x00\x00\xa7", 8) == 0)
 	{
 		fprintf(out, " Stop single-slot-CD");
@@ -783,7 +788,7 @@ events[] =
 };
 
 
-static void ibus_handle_message(const unsigned char *msg, int length, const char *suffix)
+static void ibus_handle_message(const unsigned char *msg, int length, const char *suffix, bool recovered)
 {
 	int i;
 
@@ -835,7 +840,10 @@ static void ibus_handle_message(const unsigned char *msg, int length, const char
 		}
 	}
 
-	ibus_remove_from_queue(msg, length);
+	if (!recovered)
+	{
+		ibus_remove_from_queue(msg, length);
+	}
 }
 
 static void ibus_discard_bytes(int number_of_bytes)
@@ -869,7 +877,7 @@ static bool ibus_discard_receive_buffer(void)
 		{
 			recovered = TRUE;
 
-			ibus_handle_message(ibus.buf, len, "(recover)");
+			ibus_handle_message(ibus.buf, len, "(recover)", TRUE);
 			ibus_discard_bytes(len);
 
 			if (!(ibus.bufPos >= 5))
@@ -946,7 +954,7 @@ retry:
 					{
 						recovered = TRUE;
 
-						ibus_handle_message(ibus.buf, len, "(recover)");
+						ibus_handle_message(ibus.buf, len, "(recover)", TRUE);
 						ibus_discard_bytes(len);
 
 						if (!(ibus.bufPos >= 4))
@@ -968,7 +976,7 @@ retry:
 			}
 			else
 			{
-				ibus_handle_message(ibus.buf, ibus.bufPos, "");
+				ibus_handle_message(ibus.buf, ibus.bufPos, "", FALSE);
 			}
 
 			ibus.bufPos = 0;
