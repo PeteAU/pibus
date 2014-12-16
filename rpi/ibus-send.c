@@ -20,9 +20,13 @@ static SList *pkt_list = NULL;
 
 typedef struct
 {
-	unsigned char msg[32];
+	unsigned char msg[232];
 	int length;
 	int countdown;
+	bool sync;
+	int tag;
+	int transmit_count;
+	bool interleaved;
 }
 packet;
 
@@ -30,10 +34,12 @@ packet;
 
 /* called every 50ms */
 
-void ibus_service_queue(int ifd, bool can_send, int gpio_number)
+bool ibus_service_queue(int ifd, bool can_send, int gpio_number)
 {
 	SList *list;
 	packet *pkt;
+	int i;
+	int packets_sent;
 
 	list = pkt_list;
 	while (list)
@@ -48,33 +54,63 @@ void ibus_service_queue(int ifd, bool can_send, int gpio_number)
 
 	if (!can_send)
 	{
-		return;
+		return FALSE;
 	}
 
-	/* Only send if GPIO 15 (UART RX) is high (idle state) */
-	if (pkt_list && !gpio_read(15))
+	if (pkt_list)
 	{
-		ibus_log("ibus_service_queue(): ibus/gpio busy - waiting\n");
-		return;
+		/* Only send if GPIO 15 (UART RX) is high (idle state) */
+		if (!gpio_read(15))
+		{
+			ibus_log("service_queue(): ibus/gpio busy - waiting\n");
+			return TRUE;
+		}
+
+		/* If the RX FIFO contains bytes, don't send now! */
+		if (!uart_rx_fifo_empty())
+		{
+			ibus_log("service_queue(): rx fifo not empty - waiting\n");
+			return TRUE;
+		}
 	}
 
+	i = 0;
+	packets_sent = 0;
 	list = pkt_list;
 	while (list)
 	{
 		pkt = list->data;
+
+		if (pkt->sync && i != 0)
+		{
+			/* must send all previous items first (including echo-back) */
+			break;
+		}
+
 		if (pkt->countdown == 0)
 		{
-			ibus_log("ibus_service_queue(%d): ", pkt->length);
-			ibus_dump_hex(flog, pkt->msg, pkt->length, FALSE);
+			ibus_log("service_queue(%d): ", pkt->length);
+			ibus_dump_hex(flog, pkt->msg, pkt->length, NULL);
 			write(ifd, pkt->msg, pkt->length);
-			//tcdrain(ifd);
-			/* send again if it doesn't echo back within 1.4 seconds */
-			pkt->countdown = 28;
+
+			pkt->transmit_count++;
+			pkt->interleaved = FALSE;
+
+			/* send again if it doesn't echo back within 0.5 seconds (10 * 50ms) */
+			pkt->countdown = 10;
+			packets_sent++;
 		}
-		//list = list->next;
-		/* Only process the first item */
-		break;
+
+		i++;
+		list = list->next;
 	}
+
+	if (packets_sent)
+	{
+		fsync(ifd);
+	}
+
+	return FALSE;
 }
 
 void ibus_remove_from_queue(const unsigned char *msg, int length)
@@ -85,38 +121,59 @@ void ibus_remove_from_queue(const unsigned char *msg, int length)
 	while (list)
 	{
 		pkt = list->data;
-		if (pkt->length == length)
+		if (pkt->length == length && memcmp(pkt->msg, msg, length) == 0)
 		{
-			if (memcmp(pkt->msg, msg, length) == 0)
+			if (!pkt->interleaved)
 			{
-				ibus_log("ibus_remove_queue(%d): success - dequeued\n", length);
+				ibus_log("remove_queue(%d): success - dequeued\n", length);
 				pkt_list = slist_remove(pkt_list, pkt);
 				free (pkt);
 				return;
 			}
+
+			ibus_log("remove_queue(%d): interleaved txcount=%d\n", length, pkt->transmit_count);
+			pkt->countdown = 0;
+			break;
+		}
+		list = list->next;
+	}
+
+	list = pkt_list;
+	while (list)
+	{
+		pkt = list->data;
+		if (pkt->transmit_count)
+		{
+			pkt->interleaved = TRUE;
 		}
 		list = list->next;
 	}
 }
 
-static void ibus_add_to_queue(const unsigned char *msg, int length, int countdown)
+void ibus_remove_tag_from_queue(int tag)
 {
+	SList *list;
 	packet *pkt;
 
-	pkt = malloc(sizeof(packet));
-	memcpy(pkt->msg, msg, length);
-	pkt->length = length;
-	pkt->countdown = countdown;
-
-	pkt_list = slist_append(pkt_list, pkt);
+start:
+	list = pkt_list;
+	while (list)
+	{
+		pkt = list->data;
+		if (pkt->tag == tag)
+		{
+			pkt_list = slist_remove(pkt_list, pkt);
+			free (pkt);
+			goto start;
+		}
+		list = list->next;
+	}
 }
 
-void ibus_send(int ifd, const unsigned char *msg, int length, int gpio_number)
+static unsigned char ibus_calc_sum(const unsigned char *msg, int length)
 {
-	unsigned char sum;
 	int i;
-
-	ibus_log("ibus_send(%d): %02x %02x %02x queued\n", length, msg[0], msg[1], msg[2]);
+	unsigned char sum;
 
 	sum = msg[0];
 	for (i = 1; i < (length - 1); i++)
@@ -124,13 +181,45 @@ void ibus_send(int ifd, const unsigned char *msg, int length, int gpio_number)
 		sum ^= msg[i];
 	}
 
-	if (sum != msg[length -1])
-	{
-		ibus_log("ibus_send: \033[31mbad checksum\033[m\n");
-	}
+	return sum;
+}
+
+static void ibus_add_to_queue(const unsigned char *msg, int length, int countdown, bool sync, bool prepend, int tag)
+{
+	packet *pkt;
+
+	pkt = malloc(sizeof(packet));
+	memcpy(pkt->msg, msg, length);
+	pkt->msg[length - 1] = ibus_calc_sum(pkt->msg, length);
+	pkt->length = length;
+	pkt->countdown = countdown;
+	pkt->sync = sync;
+	pkt->tag = tag;
+	pkt->transmit_count = 0;
+	pkt->interleaved = FALSE;
+
+	if (prepend)
+		pkt_list = slist_prepend(pkt_list, pkt);
+	else
+		pkt_list = slist_append(pkt_list, pkt);
+}
+
+void ibus_send(int ifd, const unsigned char *msg, int length, int gpio_number)
+{
+	ibus_log("send(%d): %02x %02x %02x queued\n", length, msg[0], msg[1], msg[2]);
 
 	if (gpio_number > 0)
 	{
-		ibus_add_to_queue(msg, length, 1);
+		ibus_add_to_queue(msg, length, 1, FALSE, FALSE, 0);
+	}
+}
+
+void ibus_send_with_tag(int ifd, const unsigned char *msg, int length, int gpio_number, bool sync, bool prepend, int tag)
+{
+	ibus_log("send(%d): %02x %02x %02x queued (tag=%d)\n", length, msg[0], msg[1], msg[2], tag);
+
+	if (gpio_number > 0)
+	{
+		ibus_add_to_queue(msg, length, 1, sync, prepend, tag);
 	}
 }

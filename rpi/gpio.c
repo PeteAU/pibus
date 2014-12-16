@@ -3,6 +3,8 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <stdint.h>
+
 #include "gpio.h"
 
 #define BCM2708_PERI_BASE        0x20000000
@@ -21,7 +23,10 @@
 #define GPIO_PUDCLK0	*(gpio+38)	/* Pull up/down clock */
 #define GPIO_PUDCLK1	*(gpio+39)	/* Pull up/down clock */
 
-#define BLOCK_SIZE (4*1024)
+#define UART_FR_OFFSET			((0x1018/4))
+#define UART_FR_RXFE_BIT		0x10
+
+#define BLOCK_SIZE (8*1024)
 
 
 // I/O access
@@ -138,4 +143,13 @@ void gpio_set_pull(int gpio_number, pull_type pt)
 void gpio_cleanup()
 {
 
+}
+
+int uart_rx_fifo_empty()
+{
+#ifdef __i386__
+	return 1;
+#else
+	return ((*(gpio + UART_FR_OFFSET)) & UART_FR_RXFE_BIT) ? 1 : 0;
+#endif
 }

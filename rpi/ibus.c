@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2013-2014 By Peter Zelezny.
+ *
+ * For personal individual use only. Other uses require written express permission.
+ *
+ */
+
 #include <termios.h>
 #include <unistd.h>
 #include <sys/types.h>
@@ -10,8 +17,10 @@
 #include <linux/input.h>
 #include <sys/select.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <errno.h>
 #include <stdarg.h>
+#include <linux/serial.h>
 
 #include "keyboard.h"
 #include "gpio.h"
@@ -46,18 +55,19 @@ static struct
 	bool have_time;
 	bool have_date;
 	bool playing;
-	bool send_window_open;
 	bool keyboard_blocked;
 	bool cd_polled;
 	bool bluetooth;
 	bool have_camera;
 	bool mk3_announce;
+	bool set_gps_time;
 
 	uint64_t last_byte;
 	int bufPos;
-	unsigned char buf[64];
+	unsigned char buf[192];
 	int ifd;
 	int radio_msgs;
+	int bytes_read;
 	int cdc_info_tag;
 	int cdc_info_interval;
 	int gpio_number;
@@ -66,26 +76,35 @@ static struct
 	videoSource_t videoSource;
 	time_t start;
 
-	char hhmm[24];
-	char yyyymmdd[24];
+	struct
+	{
+		int year;
+		int month;
+		int day;
+		int hours;
+		int minutes;
+		int seconds;
+	}
+	datetime;
 }
 ibus =
 {
 	.have_time = FALSE,
 	.have_date = FALSE,
 	.playing = FALSE,
-	.send_window_open = FALSE,
 	.keyboard_blocked = TRUE,
 	.cd_polled = FALSE,
 	.bluetooth = FALSE,
 	.have_camera = TRUE,
 	.mk3_announce = TRUE,
+	.set_gps_time = FALSE,
 
 	.last_byte = 0,
 	.bufPos = 0,
 	.buf = {0,},
 	.ifd = -1,
 	.radio_msgs = 0,
+	.bytes_read = 0,
 	.cdc_info_tag = -1,
 	.cdc_info_interval = 0,
 	.gpio_number = 0,
@@ -93,9 +112,6 @@ ibus =
 
 	.videoSource = VIDEO_SRC_BMW,
 	.start = 0,
-
-	.hhmm = {0,},
-	.yyyymmdd = {0,},
 };
 
 FILE *flog;
@@ -108,11 +124,11 @@ void ibus_log(char *fmt, ...)
 	int len;
 
 	clock_gettime(CLOCK_MONOTONIC, &ts);
-	sprintf(buf, "%6.6lu ", ts.tv_sec - ibus.start);
-	len = 7;
+	sprintf(buf, "%6.6lu.%03lu ", ts.tv_sec - ibus.start, ts.tv_nsec / 1000000);
+	len = 11;
 
 	va_start(args, fmt);
-	len += vsnprintf(buf + 7, sizeof(buf) - 8, fmt, args);
+	len += vsnprintf(buf + 11, sizeof(buf) - 12, fmt, args);
 	va_end(args);
 
 	buf[sizeof(buf) - 1] = '\0';
@@ -124,6 +140,11 @@ void ibus_log(char *fmt, ...)
 
 static void power_off(void)
 {
+	if (ibus.hw_version >= 4)
+	{
+		gpio_write(GPIO_LED_CTL, 1);
+	}
+
 	fflush(flog);
 	fclose(flog);
 	flog = NULL;
@@ -177,10 +198,10 @@ static void ibus_handle_ike_sensor(const unsigned char *msg, int length)
 	{
 		switch (msg[5] >> 4)
 		{
-			case 1:
+			case 1:	/* reverse */
 				ibus_set_video(VIDEO_SRC_CAMERA);
 				break;
-			default:
+			default:	/* any other gear */
 				ibus_set_video(ibus.videoSource);
 				break;
 		}
@@ -206,18 +227,52 @@ static bool ibus_good_checksum(const unsigned char *msg, int length)
 	return TRUE;
 }
 
-void ibus_dump_hex(FILE *out, const unsigned char *data, int length, bool check_the_sum)
+void ibus_dump_hex(FILE *out, const unsigned char *data, int length, const char *suffix)
 {
 	int i;
 
 	for (i = 0; i < length; i++)
 	{
-		fprintf(out, "%02x ", data[i]);
+		if ((i + 1) == length)
+			fprintf(out, "%02x", data[i]);
+		else
+			fprintf(out, "%02x ", data[i]);
 	}
 
-	if (check_the_sum && (!ibus_good_checksum(data, length)))
+	/* menu text */
+	if (length > 8 && data[2] == 0x3b && (data[3] == 0xa5 || data[3] == 0x21))
 	{
-		fprintf(out, "(corrupt)\n");
+		fprintf(out, " \"%.*s\"", length - 8, data + 7);
+	}
+	else if (length > 7 && data[2] == 0x3b && (data[3] == 0x23))
+	{
+		fprintf(out, " \"%.*s\"", length - 7, data + 6);
+	}
+	else if (length == 5 && memcmp(data, "\xf0\x03\x68\x01\x9a", 5) == 0)
+	{
+		fprintf(out, "    Radio status req");
+	}
+	else if (length == 6 && memcmp(data, "\x68\x04\xbf\x02", 4) == 0)
+	{
+		fprintf(out, " Radio status reply 0x%02x", data[4]);
+	}
+	else if (length == 8 && memcmp(data, "\x68\x06\xf0\x38\x01\x00\x00\xa7", 8) == 0)
+	{
+		fprintf(out, " Stop single-slot-CD");
+	}
+	else if (length == 22 && memcmp(data, "\x7f\x14\xc8\xa2\x01", 5) == 0)
+	{
+		char stamp[16];
+		time_t now = time(NULL);
+		struct tm *tm = localtime(&now);
+
+		strftime(stamp, sizeof(stamp), "%T", tm);
+		fprintf(out, " GPS: %02x:%02x:%02x RPi: %s", data[18], data[19], data[20], stamp);
+	}
+
+	if (suffix && suffix[0])
+	{
+		fprintf(out, " %s\n", suffix);
 	}
 	else
 	{
@@ -230,7 +285,7 @@ static void ibus_request_time(void)
 	/* CDChanger asks IKE for Time */
 	RODATA rt[] = "\x18\x05\x80\x41\x01\x01\xDC";
 
-	ibus_send(ibus.ifd, rt, 7, ibus.gpio_number);
+	ibus_send_with_tag(ibus.ifd, rt, 7, ibus.gpio_number, FALSE, FALSE, TAG_TIME);
 }
 
 static void ibus_request_date(void)
@@ -238,20 +293,59 @@ static void ibus_request_date(void)
 	/* CDChanger asks IKE for Date */
 	RODATA rd[] = "\x18\x05\x80\x41\x02\x01\xDF";
 
-	ibus_send(ibus.ifd, rd, 7, ibus.gpio_number);
+	ibus_send_with_tag(ibus.ifd, rd, 7, ibus.gpio_number, FALSE, FALSE, TAG_DATE);
 }
 
-static void ibus_set_time_and_date(void)
+static void ibus_set_time_and_date(bool change_date, bool change_time)
 {
-	char buf[64];
+	struct tm *tm;
+	time_t now;
 
 	if (ibus.have_time && ibus.have_date)
 	{
-		snprintf(buf, sizeof(buf), "date -s \"%s %s\"", ibus.yyyymmdd, ibus.hhmm);
-		system(buf);
+		now = time(NULL);
+		tm = gmtime(&now);
+		tm->tm_isdst = -1;
 
-		ibus_log("setting: %s\n", buf);
+		if (change_time)
+		{
+			tm->tm_sec = ibus.datetime.seconds;
+			tm->tm_min = ibus.datetime.minutes;
+			tm->tm_hour = ibus.datetime.hours;
+		}
+
+		if (change_date)
+		{
+			tm->tm_mday = ibus.datetime.day;
+			tm->tm_mon = ibus.datetime.month - 1;
+			tm->tm_year = ibus.datetime.year - 1900;
+		}
+
+		now = mktime(tm);
+		stime(&now);
+
+		if (change_date && change_time)
+		{
+			ibus_log("setting date: %04d/%02d/%02d %02d:%02d:%02d\n",
+				 ibus.datetime.year, ibus.datetime.month, ibus.datetime.day,
+				 ibus.datetime.hours, ibus.datetime.minutes, ibus.datetime.seconds);
+		}
+		else if (change_time)
+		{
+			ibus_log("setting date: ----/--/-- %02d:%02d:%02d\n",
+				 ibus.datetime.hours, ibus.datetime.minutes, ibus.datetime.seconds);
+		}
 	}
+}
+
+static int atoin(const unsigned char *str, int n)
+{
+	char buf[8];
+
+	memcpy(buf, str, n);
+	buf[n] = 0;
+
+	return atoi(buf);
 }
 
 static void ibus_handle_date(const unsigned char *msg, int length)
@@ -259,8 +353,13 @@ static void ibus_handle_date(const unsigned char *msg, int length)
 	if (length > 15 && !ibus.have_date)
 	{
 		ibus.have_date = TRUE;
-		snprintf(ibus.yyyymmdd, sizeof(ibus.yyyymmdd), "%c%c%c%c-%c%c-%c%c", msg[12], msg[13], msg[14], msg[15], msg[9], msg[10], msg[6], msg[7]);
-		ibus_set_time_and_date();
+
+		ibus.datetime.day = atoin(msg + 6, 2);
+		ibus.datetime.month = atoin(msg + 9, 2);
+		ibus.datetime.year = atoin(msg + 12, 4);
+
+		ibus_set_time_and_date(TRUE, TRUE);
+		ibus_remove_tag_from_queue(TAG_DATE);
 	}
 }
 
@@ -285,20 +384,57 @@ static void ibus_handle_time(const unsigned char *msg, int length)
 1/26/2010 5:04:11 PM.303:  80 0F E7 24 02 00 30 31 2F 32 36 2F 32 30 31 30 48
 1/26/2010 5:04:11 PM.303:  IKE  --> ANZV: Update Text:  Layout=Date  Fld0,EndTx="01/26/2010"
 */
-	int hour;
-
 	if (length > 12 && !ibus.have_time)
 	{
-		hour = atoi((const char *)msg + 6);
+		ibus.have_time = TRUE;
+
+		ibus.datetime.hours = atoin(msg + 6, 2);
+		ibus.datetime.minutes = atoin(msg + 9, 2);
+		ibus.datetime.seconds = 1;
 
 		if (msg[11] == 'P')
 		{
-			hour += 12;
+			ibus.datetime.hours += 12;
 		}
 
-		ibus.have_time = TRUE;
-		snprintf(ibus.hhmm, sizeof(ibus.hhmm), "%02d:%c%c", hour, msg[9], msg[10]);
-		ibus_set_time_and_date();
+		ibus_set_time_and_date(TRUE, TRUE);
+		ibus_remove_tag_from_queue(TAG_TIME);
+	}
+}
+
+static void ibus_handle_gps(const unsigned char *msg, int length)
+{
+	int gps_minutes;
+	int gps_seconds;
+	time_t now = time(NULL);
+	struct tm *tm = localtime(&now);
+	int offset;
+
+// 05.06.2011 19:52:03.334: 7F 14 C8 A2 01 00 49 34 02 10 00 10 59 31 00 02 89 00 17 52 01 D8
+// 05.06.2011 19:52:03.334: NAV --> TEL : Current position: GPS fix; 49°34'2.1"N 10°59'31.0"E; Alt 289m; UTC 17:52:01
+
+	if (length != 22)
+	{
+		return;
+	}
+
+	gps_minutes = ((msg[19] >> 4) * 10) + (msg[19] & 0x0F);
+	gps_seconds = ((msg[20] >> 4) * 10) + (msg[20] & 0x0F);
+
+	if (gps_minutes > 2 && gps_minutes < 57 && tm->tm_min > 2 && tm->tm_min < 57)
+	{
+		offset = abs(((gps_minutes * 60) + gps_seconds) - ((tm->tm_min * 60) + tm->tm_sec));
+
+		if ((offset >= 30 && offset <= 180) || (!ibus.set_gps_time && offset <= 180))
+		{
+			ibus.set_gps_time = TRUE;
+
+			ibus.datetime.hours = tm->tm_hour;
+			ibus.datetime.minutes = gps_minutes;
+			ibus.datetime.seconds = gps_seconds;
+
+			ibus_set_time_and_date(FALSE, TRUE);
+		}
 	}
 }
 
@@ -342,12 +478,9 @@ static void ibus_handle_outsidekey(const unsigned char *msg, int length)
 	}
 }
 
-static void ibus_handle_tonekey(const unsigned char *msg, int length)
+static void ibus_handle_toneselectoff(const unsigned char *msg, int length)
 {
-	if (ibus.hw_version >= 4)
-	{
-		ibus_handle_outsidekey(msg, length);
-	}
+	/* screen cleared - refresh required */
 }
 
 static void ibus_handle_screen(const unsigned char *msg, int length)
@@ -382,14 +515,16 @@ RODATA pause_playing[] = "\x18\x0a\x68\x39\x01\x0c\x00\x01\x00\x01\x04\x4a";
 
 static void cdchanger_send_inforeq(void)
 {
+	ibus_remove_tag_from_queue(TAG_CDC);
+
 	if (ibus.playing)
 	{
 		/* This un-mutes the line-in */
-		ibus_send(ibus.ifd, start_playing, 12, ibus.gpio_number);
+		ibus_send_with_tag(ibus.ifd, start_playing, 12, ibus.gpio_number, TRUE, TRUE, TAG_CDC);
 	}
 	else
 	{
-		ibus_send(ibus.ifd, not_playing, 12, ibus.gpio_number);
+		ibus_send_with_tag(ibus.ifd, not_playing, 12, ibus.gpio_number, TRUE, TRUE, TAG_CDC);
 	}
 
 	/* No more announcements */
@@ -434,6 +569,12 @@ static void cdchanger_handle_stop(const unsigned char *msg, int length)
 {
 	ibus_send(ibus.ifd, not_playing, 12, ibus.gpio_number);
 	ibus.playing = FALSE;
+
+	if (ibus.cdc_info_tag != -1)
+	{
+		mainloop_timeout_remove(ibus.cdc_info_tag);
+		ibus.cdc_info_tag = -1;
+	}
 }
 
 static void cdchanger_handle_pause(const unsigned char *msg, int length)
@@ -509,6 +650,41 @@ static bool is_cdc_message(const unsigned char *buf, int length)
 	return FALSE;
 }
 
+static void ibus_l1(const unsigned char *buf, int length)
+{
+}
+
+static void ibus_l2(const unsigned char *buf, int length)
+{
+}
+
+static void ibus_l3(const unsigned char *buf, int length)
+{
+}
+
+static void ibus_l4(const unsigned char *buf, int length)
+{
+}
+
+static void ibus_l5(const unsigned char *buf, int length)
+{
+}
+
+static void ibus_l6(const unsigned char *buf, int length)
+{
+}
+
+static void ibus_handle_preset(const unsigned char *msg, int length)
+{
+// 05.06.2011 19:52:33.448: 3B 06 68 31 60 00 02 06
+// 05.06.2011 19:52:33.448: GT --> RAD : Button: Button_2_pressed
+
+	if (length != 8)
+	{
+		return;
+	}
+}
+
 static const struct
 {
 	int match_length;
@@ -525,10 +701,21 @@ events[] =
 	{6, "\xF0\x04\x3B\x48\x05\x82", "enter", NULL, KEY_ENTER},
 	{6, "\xF0\x04\x68\x48\x14\xC0", "<>", NULL, KEY_TAB},
 	{4, "\xF0\x04\x3B\x49", "rotary", NULL, 0, ibus_handle_rotary},
-	{6, "\xF0\x04\x68\x48\x04\xD0", "tone", NULL, 0, ibus_handle_tonekey},
+
+	{6, "\xF0\x04\x68\x48\x04\xD0", "tone", NULL, 0, ibus_handle_outsidekey},
+	{6, "\xF0\x04\x68\x48\x20\xF4", "select", NULL, 0, ibus_handle_outsidekey},
+	{7, "\xf0\x05\xff\x47\x00\x0f\x42", "select", NULL, 0, ibus_handle_outsidekey},
+	{7, "\xF0\x05\xFF\x47\x00\x38\x75", "info", NULL, 0, ibus_handle_outsidekey},
 
 	{6, "\xF0\x04\x68\x48\x40\x94", "FF", NULL, KEY_RIGHT|_CTRL_BIT},
 	{6, "\xF0\x04\x68\x48\x50\x84", "RR", NULL, KEY_LEFT|_CTRL_BIT},
+
+//	{6, "\xF0\x04\x68\x48\x51\x85", "L1", NULL, 0, ibus_l1},
+//	{6, "\xF0\x04\x68\x48\x41\x95", "L2", NULL, 0, ibus_l2},
+//	{6, "\xF0\x04\x68\x48\x52\x86", "L3", NULL, 0, ibus_l3},
+//	{6, "\xF0\x04\x68\x48\x42\x96", "L4", NULL, 0, ibus_l4},
+//	{6, "\xF0\x04\x68\x48\x53\x87", "L5", NULL, 0, ibus_l5},
+//	{6, "\xF0\x04\x68\x48\x43\x97", "L6", NULL, 0, ibus_l6},
 
 	{6, "\xF0\x04\x68\x48\x11\xC5", "1", NULL, KEY_SPACE},
 	{6, "\xF0\x04\x68\x48\x02\xD6", "4", NULL, KEY_I},
@@ -547,7 +734,7 @@ events[] =
 	{6, "\x68\x04\x3b\x46\x01\x10", "screen-none", NULL, 0},
 	{6, "\x68\x04\x3b\x46\x04\x15", "screen-toneoff", NULL, 0},
 	{6, "\x68\x04\x3b\x46\x08\x19", "screen-selectoff", NULL, 0},
-	{6, "\x68\x04\x3b\x46\x0C\x1d", "screen-toneselectoff", NULL, 0},
+	{6, "\x68\x04\x3b\x46\x0C\x1d", "screen-toneselectoff", NULL, 0, ibus_handle_toneselectoff},
 	{4, "\x68\x04\x3b\x46", "screen-unknown", NULL, 0, ibus_handle_screen},
 
 	{6, "\x50\x04\xc8\x3b\x80\x27", "speak", NULL, 0, ibus_handle_speak},
@@ -559,7 +746,10 @@ events[] =
 	{5, "\x80\x0C\xE7\x24\x01", "time", NULL, 0, ibus_handle_time},
 	{5, "\x80\x0F\xE7\x24\x02", "date", NULL, 0, ibus_handle_date},
 
-	{5, "\x68\x03\x18\x01\x72", "cd-poll", NULL, 0, cdchanger_handle_poll},
+	{5, "\x7F\x14\xC8\xA2\x01", NULL/*"GPS"*/, NULL, 0, ibus_handle_gps},
+
+//	{6, "\x68\x04\xBF\x02\x01\xD0", "radio-start",  NULL, 0, cdchanger_handle_poll},
+	{5, "\x68\x03\x18\x01\x72",         "cd-poll",  NULL, 0, cdchanger_handle_poll},
 	{7, "\x68\x05\x18\x38\x00\x00\x4d", "cd-info",  NULL, 0, cdchanger_handle_inforeq},
 	{7, "\x68\x05\x18\x38\x01\x00\x4c", "cd-stop",  NULL, 0, cdchanger_handle_stop},
 	{7, "\x68\x05\x18\x38\x02\x00\x4f", "cd-pause", NULL, 0, cdchanger_handle_pause},
@@ -571,6 +761,11 @@ events[] =
 	/* These are handled by the ATtiny on V2 and V3 boards */
 	{6, "\xF0\x04\xFF\x48\x08\x4B", "phone", NULL, 0, ibus_handle_phone},
 	{4, "\x80\x0A\xBF\x13", "IKE sensor", NULL, 0, ibus_handle_ike_sensor},
+	{4, "\x80\x09\xBF\x13", "IKE sensor", NULL, 0, ibus_handle_ike_sensor},
+
+	{6, "\x3B\x06\x68\x31\x60\x00", "preset", NULL, 0, ibus_handle_preset},
+
+	{20,"\x68\x12\x3b\x23\x62\x10\x41\x55\x58\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x5c", NULL/*"aux"*/, NULL, 0, ibus_handle_outsidekey},
 
 #if 0
 	/* The most common CDC message */
@@ -588,12 +783,12 @@ events[] =
 };
 
 
-static void ibus_handle_message(const unsigned char *msg, int length)
+static void ibus_handle_message(const unsigned char *msg, int length, const char *suffix)
 {
 	int i;
 
 	ibus_log("");
-	ibus_dump_hex(flog, msg, length, TRUE);
+	ibus_dump_hex(flog, msg, length, suffix);
 
 	/* are we entering the CDC screen? */
 	if (is_cdc_message(msg, length))
@@ -621,7 +816,10 @@ static void ibus_handle_message(const unsigned char *msg, int length)
 				keyboard_generate(events[i].key);
 			}
 
-			ibus_log("ibus event: \033[32m%s\033[m\n", events[i].desc);
+			if (events[i].desc != NULL)
+			{
+				ibus_log("ibus event: \033[32m%s\033[m\n", events[i].desc);
+			}
 
 			if (events[i].command != NULL)
 			{
@@ -640,10 +838,58 @@ static void ibus_handle_message(const unsigned char *msg, int length)
 	ibus_remove_from_queue(msg, length);
 }
 
+static void ibus_discard_bytes(int number_of_bytes)
+{
+	ibus.bufPos -= number_of_bytes;
+
+	/* bug? */
+	if (ibus.bufPos < 0)
+	{
+		ibus.bufPos = 0;
+	}
+	else if (ibus.bufPos)
+	{
+		memmove(ibus.buf, ibus.buf + number_of_bytes, ibus.bufPos);
+	}
+}
+
+static bool ibus_discard_receive_buffer(void)
+{
+	int len;
+	bool recovered = FALSE;
+
+	while (ibus.bufPos >= 5)
+	{
+		/* discard the 1st byte and try again */
+		ibus_discard_bytes(1);
+
+		len = ibus.buf[LENGTH] + 2;
+
+		while (len >= 4 && len <= ibus.bufPos && ibus_good_checksum(ibus.buf, len))
+		{
+			recovered = TRUE;
+
+			ibus_handle_message(ibus.buf, len, "(recover)");
+			ibus_discard_bytes(len);
+
+			if (!(ibus.bufPos >= 5))
+			{
+				break;
+			}
+
+			len = ibus.buf[LENGTH] + 2;
+		}
+	}
+
+	ibus.bufPos = 0;
+
+	return recovered;
+}
+
 static void ibus_read(int condition, void *unused)
 {
 	unsigned char c;
-	uint64_t now = mainloop_get_millisec();
+	uint64_t now;
 	int r;
 
 	while (1)
@@ -662,9 +908,13 @@ static void ibus_read(int condition, void *unused)
 			return;
 		}
 
-		if (now - ibus.last_byte > 64)
+		now = mainloop_get_millisec();
+
+		if (now - ibus.last_byte > 64 && ibus.bufPos)
 		{
-			ibus.bufPos = 0;
+			ibus_log("ibus_read(): discard %d: ", ibus.bufPos);
+			ibus_dump_hex(flog, ibus.buf, ibus.bufPos, NULL);
+			ibus_discard_receive_buffer();
 		}
 		ibus.last_byte = now;
 
@@ -674,11 +924,53 @@ static void ibus_read(int condition, void *unused)
 			ibus.bufPos++;
 		}
 
-		ibus.send_window_open = FALSE;
+		ibus.bytes_read++;
 
-		if (ibus.bufPos >= 4 && ibus.buf[LENGTH] + 2 == ibus.bufPos)
+retry:
+		if (ibus.bufPos >= 4 && (ibus.buf[LENGTH] + 2) == ibus.bufPos)
 		{
-			ibus_handle_message(ibus.buf, ibus.bufPos);
+			if (!ibus_good_checksum(ibus.buf, ibus.bufPos))
+			{
+				ibus_log("");
+				ibus_dump_hex(flog, ibus.buf, ibus.bufPos, "(corrupt)");
+
+				while (ibus.bufPos >= 5)
+				{
+					/* discard the 1st byte and try again */
+					ibus_discard_bytes(1);
+
+					int len = ibus.buf[LENGTH] + 2;
+					bool recovered = FALSE;
+
+					while (len <= ibus.bufPos && ibus_good_checksum(ibus.buf, len))
+					{
+						recovered = TRUE;
+
+						ibus_handle_message(ibus.buf, len, "(recover)");
+						ibus_discard_bytes(len);
+
+						if (!(ibus.bufPos >= 4))
+						{
+							//ibus.bufPos = 0;
+							break;
+						}
+
+						len = ibus.buf[LENGTH] + 2;
+					}
+
+					if (recovered)
+					{
+						goto retry;
+					}
+				}
+
+				/* bad... improve this path! */
+			}
+			else
+			{
+				ibus_handle_message(ibus.buf, ibus.bufPos, "");
+			}
+
 			ibus.bufPos = 0;
 		}
 	}
@@ -705,52 +997,30 @@ static void announce_cdc()
 	}
 }
 
-/* every 50ms */
+/* every one second */
 
-static int ibus_tick(void *unused)
+static int ibus_1s_tick(void *unused)
 {
 	static int i = 0;
-	static int j = 0;
 
 	i++;
-	if (i >= 20)
+	if (i >= 30)
 	{
 		i = 0;
-		/* 5 minute idle timeout */
-		if (mainloop_get_millisec() - ibus.last_byte > 300000)
-		{
-			ibus_log("idle timeout\n");
-			power_off();
-		}
 	}
 
-	if (ibus.hw_version >= 4)
+	/* flush log every 30s */
+	if (i == 4)
 	{
-		if (i < 2)
-		{
-			gpio_write(GPIO_LED_CTL, 1);
-		}
-		else
-		{
-			gpio_write(GPIO_LED_CTL, 0);
-		}
-	}
-
-	j++;
-	if (j >= 600)
-	{
-		j = 0;
-		/* flush log & announce CD-changer every 30s */
 		fflush(flog);
 		if (ibus.mk3_announce)
 		{
 			announce_cdc();
 		}
-
 	}
 
 	/* every 15s */
-	if (j == 0 || j == 300)
+	if (i == 8 || i == 23)
 	{
 		if (!ibus.have_time)
 		{
@@ -762,17 +1032,74 @@ static int ibus_tick(void *unused)
 		}
 	}
 
+	/* 5 minute idle timeout */
+	if (mainloop_get_millisec() - ibus.last_byte > 300000)
+	{
+		ibus_log("idle timeout\n");
+		power_off();
+	}
+
+	return 1;
+}
+
+/* every 50ms */
+
+static int ibus_50ms_tick(void *unused)
+{
+	static int i = 0;
+	bool can_send;
+	uint64_t now;
+
+	i++;
+	if (i >= 20)
+	{
+		i = 0;
+	}
+
+	if (ibus.hw_version >= 4)
+	{
+		/* blink the LED */
+		gpio_write(GPIO_LED_CTL, (i < 2) ? 1 : 0);
+	}
+
+	/* this'll hardly ever happen */
+	if (ibus.bufPos)
+	{
+		now = mainloop_get_millisec();
+		if (now - ibus.last_byte > 200)
+		{
+			ibus_log("ibus_50ms_tick(): discard %d: ", ibus.bufPos);
+			ibus_dump_hex(flog, ibus.buf, ibus.bufPos, NULL);
+			ibus_discard_receive_buffer();
+		}
+	}
+
 	if (ibus.gpio_number > 0)
 	{
-		ibus_service_queue(ibus.ifd, ibus.send_window_open, ibus.gpio_number);
-
-		/* If >50ms (2 ticks) has passed without receiving any bytes,
-		 * we have an opportunity to transmit (bus is quiet).
-		 */
-
-		if (!ibus.send_window_open && ibus.bufPos == 0)
+		if (ibus.bytes_read == 0)
 		{
-			ibus.send_window_open = TRUE;
+			can_send = TRUE;
+		}
+		else
+		{
+			can_send = FALSE;
+		}
+
+		if (ibus_service_queue(ibus.ifd, can_send, ibus.gpio_number))
+		{
+			/* Unexpected: GPIO was low or RX FIFO not empty :( */
+		}
+
+		if (ibus.bufPos == 0 && !can_send)
+		{
+			/* restart the counter */
+			ibus.bytes_read = 0;
+
+			/*
+			 * Now wait for ibus_50ms_tick() to be called again.
+			 * If no bytes were read during this 50ms, we can transmit.
+			 *
+			 */
 		}
 	}
 
@@ -807,11 +1134,12 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 {
 	struct termios newtio;
 	struct timespec ts;
+	struct serial_struct ser;
 
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 	ibus.start = ts.tv_sec;
 
-	ibus.ifd = open(port, O_RDWR | O_NOCTTY);
+	ibus.ifd = open(port, O_RDWR | O_NOCTTY | O_SYNC);
 	if (ibus.ifd == -1)
 	{
 		fprintf(stderr, "Can't open ibus [%s] %s\n", port, strerror(errno));
@@ -829,6 +1157,10 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 
 	tcflush(ibus.ifd, TCIFLUSH);
 	tcsetattr(ibus.ifd, TCSANOW, &newtio);
+
+	ioctl(ibus.ifd, TIOCGSERIAL, &ser);
+	ser.flags |= ASYNC_LOW_LATENCY;
+	ioctl(ibus.ifd, TIOCSSERIAL, &ser);
 
 #ifdef __i386__
 	flog = fopen("./ibus.txt", "a");
@@ -855,7 +1187,8 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 	ibus.hw_version = hw_version;
 
 	mainloop_input_add(ibus.ifd, FIA_READ, ibus_read, NULL);
-	mainloop_timeout_add(50, ibus_tick, NULL);
+	mainloop_timeout_add(50, ibus_50ms_tick, NULL);
+	mainloop_timeout_add(1000, ibus_1s_tick, NULL);
 
 	/* gpio 15 is the UART RX, don't change its direction. */
 	if (gpio_number != 15 && gpio_number != 0)
