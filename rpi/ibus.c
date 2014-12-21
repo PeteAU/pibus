@@ -71,6 +71,7 @@ static struct
 	int cdc_info_tag;
 	int cdc_info_interval;
 	int gpio_number;
+	int idle_timeout;
 	int hw_version;
 
 	videoSource_t videoSource;
@@ -108,6 +109,7 @@ ibus =
 	.cdc_info_tag = -1,
 	.cdc_info_interval = 0,
 	.gpio_number = 0,
+	.idle_timeout = 0,
 	.hw_version = 0,
 
 	.videoSource = VIDEO_SRC_BMW,
@@ -1041,7 +1043,7 @@ static int ibus_1s_tick(void *unused)
 	}
 
 	/* 5 minute idle timeout */
-	if (mainloop_get_millisec() - ibus.last_byte > 300000)
+	if (mainloop_get_millisec() - ibus.last_byte > ibus.idle_timeout * 1000)
 	{
 		ibus_log("idle timeout\n");
 		power_off();
@@ -1138,7 +1140,7 @@ static void ibus_send_ascii(const char *cmd)
 	fflush(flog);
 }
 
-int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool mk3, int cdc_info_interval, int gpio_number, int hw_version)
+int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool mk3, int cdc_info_interval, int gpio_number, int idle_timeout, int hw_version)
 {
 	struct termios newtio;
 	struct timespec ts;
@@ -1183,7 +1185,7 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 		return -2;
 	}
 
-	ibus_log("startup bt=%d cam=%d mk3=%d cdci=%d gpio=%d hwv=%d [" __DATE__ "]\n", bluetooth, camera, mk3, cdc_info_interval, gpio_number, hw_version);
+	ibus_log("startup bt=%d cam=%d mk3=%d cdci=%d gpio=%d idle=%d hwv=%d [" __DATE__ "]\n", bluetooth, camera, mk3, cdc_info_interval, gpio_number, idle_timeout, hw_version);
 	fflush(flog);
 
 	ibus.last_byte = mainloop_get_millisec();
@@ -1192,6 +1194,7 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 	ibus.mk3_announce = mk3;
 	ibus.cdc_info_interval = cdc_info_interval;
 	ibus.gpio_number = gpio_number;
+	ibus.idle_timeout = idle_timeout;
 	ibus.hw_version = hw_version;
 
 	mainloop_input_add(ibus.ifd, FIA_READ, ibus_read, NULL);

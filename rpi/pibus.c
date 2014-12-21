@@ -29,10 +29,11 @@ int main(int argc, char **argv)
 	char *startup = NULL;
 	int cdcinterval = 0;
 	bool gpio_changed = FALSE;
+	int idle_timeout = 300;
 
 	mainloop_init();
 
-	while ((opt = getopt(argc, argv, "c:g:s:v:bhmr")) != -1)
+	while ((opt = getopt(argc, argv, "c:g:s:t:v:bhmr")) != -1)
 	{
 		switch (opt)
 		{
@@ -70,6 +71,7 @@ int main(int argc, char **argv)
 					"\t-m           Do not do MK3 style CDC announcements\n"
 					"\t-r           Do not switch to camera in reverse gear\n"
 					"\t-s <string>  Send extra string to IBUS at startup\n"
+					"\t-t <seconds> Set the idle timeout in seconds (V4 boards only, default 300)\n"
 					"\t-v <number>  Set PiBUS hardware version\n"
 					"\n",
 					argv[0]);
@@ -93,7 +95,7 @@ int main(int argc, char **argv)
 		return -4;
 	}
 
-	if (ibus_init(port, startup, bluetooth, camera, mk3, cdcinterval, gpio_number, hw_version) != 0)
+	if (ibus_init(port, startup, bluetooth, camera, mk3, cdcinterval, gpio_number, idle_timeout, hw_version) != 0)
 	{
 		return -2;
 	}
