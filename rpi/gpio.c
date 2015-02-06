@@ -4,11 +4,15 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "gpio.h"
 
-#define BCM2708_PERI_BASE        0x20000000
-#define GPIO_BASE                (BCM2708_PERI_BASE + 0x200000) /* GPIO controller */
+#define V1_BCM2708_PERI_BASE        0x20000000
+#define V1_GPIO_BASE                (V1_BCM2708_PERI_BASE + 0x200000) /* GPIO controller */
+
+#define V2_BCM2708_PERI_BASE        0x3F000000
+#define V2_GPIO_BASE                (V2_BCM2708_PERI_BASE + 0x200000) /* GPIO controller */
 
 #define GPIO_PIN_L0_FSEL0_OFFSET	(0)		/* GPFSEL0 */
 #define GPIO_PIN_L0_FSEL1_OFFSET	((0x04/4))	/* GPFSEL1 */
@@ -33,6 +37,29 @@
 static volatile unsigned int *gpio;
 
 
+static int pi_v2()
+{
+	char buf[512];
+	int fd;
+	int v2 = 0;
+
+	fd = open("/proc/cpuinfo", O_RDONLY);
+	if (fd != -1)
+	{
+		if (read(fd, buf, sizeof (buf)) > 10)
+		{
+			buf[sizeof(buf) - 1] = 0;
+			if (strstr(buf, "ARMv7"))
+			{
+				v2 = 1;
+			}
+		}
+		close(fd);
+	}
+
+	return v2;
+}
+
 int gpio_init()
 {
 #ifdef __i386__
@@ -53,7 +80,7 @@ int gpio_init()
 		PROT_READ|PROT_WRITE,// Enable reading & writting to mapped memory
 		MAP_SHARED,       //Shared with other processes
 		mem_fd,           //File to map
-		GPIO_BASE         //Offset to GPIO peripheral
+		pi_v2() ? V2_GPIO_BASE : V1_GPIO_BASE         //Offset to GPIO peripheral
 	);
 
 	close(mem_fd); //No need to keep mem_fd open after mmap
