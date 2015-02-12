@@ -15,6 +15,7 @@
 extern FILE *flog;
 
 static SList *pkt_list = NULL;
+static bool port_good = FALSE;
 
 
 
@@ -33,12 +34,14 @@ packet;
 
 /* called every 50ms */
 
-bool ibus_service_queue(int ifd, bool can_send, int gpio_number)
+bool ibus_service_queue(int ifd, bool can_send, int gpio_number, bool *giveup)
 {
 	SList *list;
 	packet *pkt;
 	int i;
 	int packets_sent;
+
+	*giveup = FALSE;
 
 	list = pkt_list;
 	while (list)
@@ -93,6 +96,12 @@ bool ibus_service_queue(int ifd, bool can_send, int gpio_number)
 			write(ifd, pkt->msg, pkt->length);
 
 			pkt->transmit_count++;
+			if (pkt->transmit_count > 3 && !port_good)
+			{
+				pkt->transmit_count = 1;
+				*giveup = TRUE;
+				return FALSE;
+			}
 
 			/* send again if it doesn't echo back within 0.5 seconds (10 * 50ms) */
 			pkt->countdown = 10;
@@ -111,6 +120,20 @@ bool ibus_service_queue(int ifd, bool can_send, int gpio_number)
 	return FALSE;
 }
 
+void ibus_discard_queue(void)
+{
+	SList *list = pkt_list;
+	packet *pkt;
+
+	while (list)
+	{
+		pkt = list->data;
+		pkt_list = slist_remove(pkt_list, pkt);
+		free (pkt);
+		list = pkt_list;
+	}
+}
+
 void ibus_remove_from_queue(const unsigned char *msg, int length)
 {
 	SList *list = pkt_list;
@@ -121,6 +144,7 @@ void ibus_remove_from_queue(const unsigned char *msg, int length)
 		pkt = list->data;
 		if (pkt->length == length && memcmp(pkt->msg, msg, length) == 0)
 		{
+			port_good = TRUE;
 			ibus_log("remove_queue(%d): success - dequeued\n", length);
 			pkt_list = slist_remove(pkt_list, pkt);
 			free (pkt);

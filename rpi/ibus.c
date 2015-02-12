@@ -21,6 +21,7 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <linux/serial.h>
+#include <pwd.h>
 
 #include "keyboard.h"
 #include "gpio.h"
@@ -65,8 +66,11 @@ static struct
 	uint64_t last_byte;
 	int bufPos;
 	unsigned char buf[192];
+	char *port_name;
 	int ifd;
+	int ifd_tag;
 	int radio_msgs;
+	int any_msgs;
 	int bytes_read;
 	int cdc_info_tag;
 	int cdc_info_interval;
@@ -103,8 +107,11 @@ ibus =
 	.last_byte = 0,
 	.bufPos = 0,
 	.buf = {0,},
+	.port_name = NULL,
 	.ifd = -1,
+	.ifd_tag = -1,
 	.radio_msgs = 0,
+	.any_msgs = 0,
 	.bytes_read = 0,
 	.cdc_info_tag = -1,
 	.cdc_info_interval = 0,
@@ -809,6 +816,8 @@ static void ibus_handle_message(const unsigned char *msg, int length, const char
 		ibus.radio_msgs++;
 	}
 
+	ibus.any_msgs++;
+
 	for (i = 0; i < sizeof(events) / sizeof(events[0]); i++)
 	{
 		if (events[i].match_length > length)
@@ -1007,6 +1016,49 @@ static void announce_cdc()
 	}
 }
 
+static int ibus_init_serial_port(bool have_log)
+{
+	struct termios newtio;
+	struct serial_struct ser;
+
+	if (ibus.ifd_tag != -1)
+	{
+		mainloop_input_remove(ibus.ifd_tag);
+		ibus.ifd_tag = -1;
+		close(ibus.ifd);
+	}
+
+	ibus.ifd = open(ibus.port_name, O_RDWR | O_NOCTTY | O_SYNC);
+	if (ibus.ifd == -1)
+	{
+		if (have_log)
+			ibus_log("Can't open ibus [%s] %s\n", ibus.port_name, strerror(errno));
+		else
+			fprintf(stderr, "Can't open ibus [%s] %s\n", ibus.port_name, strerror(errno));
+		return -1;
+	}
+
+	memset(&newtio, 0, sizeof(newtio)); /* clear struct for new port settings */
+	newtio.c_cflag = B9600 | CS8 | CLOCAL | CREAD | PARENB;
+	newtio.c_iflag = IGNPAR | IGNBRK;
+	newtio.c_oflag = 0;
+	newtio.c_lflag = 0;
+
+	newtio.c_cc[VTIME] = 0;   /* inter-character timer unused */
+	newtio.c_cc[VMIN] = 0;    /* !blocking read until 1 chars received */
+
+	tcflush(ibus.ifd, TCIFLUSH);
+	tcsetattr(ibus.ifd, TCSANOW, &newtio);
+
+	ioctl(ibus.ifd, TIOCGSERIAL, &ser);
+	ser.flags |= ASYNC_LOW_LATENCY;
+	ioctl(ibus.ifd, TIOCSSERIAL, &ser);
+
+	ibus.ifd_tag = mainloop_input_add(ibus.ifd, FIA_READ, ibus_read, NULL);
+
+	return 0;
+}
+
 /* every one second */
 
 static int ibus_1s_tick(void *unused)
@@ -1059,6 +1111,7 @@ static int ibus_50ms_tick(void *unused)
 	static int i = 0;
 	bool can_send;
 	uint64_t now;
+	bool giveup;
 
 	i++;
 	if (i >= 20)
@@ -1095,9 +1148,17 @@ static int ibus_50ms_tick(void *unused)
 			can_send = FALSE;
 		}
 
-		if (ibus_service_queue(ibus.ifd, can_send, ibus.gpio_number))
+		if (ibus_service_queue(ibus.ifd, can_send, ibus.gpio_number, &giveup))
 		{
 			/* Unexpected: GPIO was low or RX FIFO not empty :( */
+		}
+
+		if (giveup)
+		{
+			ibus_log("serial port is broken - reopening\n");
+			//ibus_discard_queue();
+			ibus_init_serial_port(TRUE);
+			ibus.any_msgs = 0;
 		}
 
 		if (ibus.bufPos == 0 && !can_send)
@@ -1142,44 +1203,50 @@ static void ibus_send_ascii(const char *cmd)
 
 int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool mk3, int cdc_info_interval, int gpio_number, int idle_timeout, int hw_version)
 {
-	struct termios newtio;
 	struct timespec ts;
-	struct serial_struct ser;
 
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 	ibus.start = ts.tv_sec;
+	ibus.port_name = strdup(port);
 
-	ibus.ifd = open(port, O_RDWR | O_NOCTTY | O_SYNC);
-	if (ibus.ifd == -1)
+	if (ibus_init_serial_port(FALSE) == -1)
 	{
-		fprintf(stderr, "Can't open ibus [%s] %s\n", port, strerror(errno));
 		return -1;
 	}
 
-	memset(&newtio, 0, sizeof(newtio)); /* clear struct for new port settings */
- 	newtio.c_cflag = B9600 | CS8 | CLOCAL | CREAD | PARENB;
-	newtio.c_iflag = IGNPAR | IGNBRK;
-	newtio.c_oflag = 0;
-	newtio.c_lflag = 0;
+	usleep(10000);
 
-	newtio.c_cc[VTIME] = 0;   /* inter-character timer unused */
-	newtio.c_cc[VMIN] = 0;    /* !blocking read until 1 chars received */
-
-	tcflush(ibus.ifd, TCIFLUSH);
-	tcsetattr(ibus.ifd, TCSANOW, &newtio);
-
-	ioctl(ibus.ifd, TIOCGSERIAL, &ser);
-	ser.flags |= ASYNC_LOW_LATENCY;
-	ioctl(ibus.ifd, TIOCSSERIAL, &ser);
+	if (ibus_init_serial_port(FALSE) == -1)
+	{
+		return -1;
+	}
 
 #ifdef __i386__
 	flog = fopen("./ibus.txt", "a");
 #else
-	flog = fopen("/storage/ibus.txt", "a");
+	{
+		char logfile[256];
+		struct passwd *pw;
+
+		flog = NULL;
+		pw = getpwuid(getuid());
+		if (pw)
+		{
+			sprintf(logfile, "%s/ibus.txt", pw->pw_dir);
+			flog = fopen(logfile, "a");
+		}
+
+		if (flog == NULL)
+		{
+			flog = fopen("/storage/ibus.txt", "a");
+		}
+	}
 #endif
 	if (flog == NULL)
 	{
 		fprintf(stderr, "Cannot write to log: %s\n", strerror(errno));
+		mainloop_input_remove(ibus.ifd_tag);
+		ibus.ifd_tag = -1;
 		close(ibus.ifd);
 		ibus.ifd = -1;
 		return -2;
@@ -1197,7 +1264,6 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 	ibus.idle_timeout = idle_timeout;
 	ibus.hw_version = hw_version;
 
-	mainloop_input_add(ibus.ifd, FIA_READ, ibus_read, NULL);
 	mainloop_timeout_add(50, ibus_50ms_tick, NULL);
 	mainloop_timeout_add(1000, ibus_1s_tick, NULL);
 
