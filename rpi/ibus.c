@@ -688,17 +688,6 @@ static void ibus_l6(const unsigned char *buf, int length)
 {
 }
 
-static void ibus_handle_preset(const unsigned char *msg, int length)
-{
-// 05.06.2011 19:52:33.448: 3B 06 68 31 60 00 02 06
-// 05.06.2011 19:52:33.448: GT --> RAD : Button: Button_2_pressed
-
-	if (length != 8)
-	{
-		return;
-	}
-}
-
 static const struct
 {
 	int match_length;
@@ -762,7 +751,6 @@ events[] =
 
 	{5, "\x7F\x14\xC8\xA2\x01", NULL/*"GPS"*/, NULL, 0, ibus_handle_gps},
 
-//	{6, "\x68\x04\xBF\x02\x01\xD0", "radio-start",  NULL, 0, cdchanger_handle_poll},
 	{5, "\x68\x03\x18\x01\x72",         "cd-poll",  NULL, 0, cdchanger_handle_poll},
 	{7, "\x68\x05\x18\x38\x00\x00\x4d", "cd-info",  NULL, 0, cdchanger_handle_inforeq},
 	{7, "\x68\x05\x18\x38\x01\x00\x4c", "cd-stop",  NULL, 0, cdchanger_handle_stop},
@@ -776,8 +764,6 @@ events[] =
 	{6, "\xF0\x04\xFF\x48\x08\x4B", "phone", NULL, 0, ibus_handle_phone},
 	{4, "\x80\x0A\xBF\x13", "IKE sensor", NULL, 0, ibus_handle_ike_sensor},
 	{4, "\x80\x09\xBF\x13", "IKE sensor", NULL, 0, ibus_handle_ike_sensor},
-
-	{6, "\x3B\x06\x68\x31\x60\x00", "preset", NULL, 0, ibus_handle_preset},
 
 	{20,"\x68\x12\x3b\x23\x62\x10\x41\x55\x58\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x5c", NULL/*"aux"*/, NULL, 0, ibus_handle_outsidekey},
 
