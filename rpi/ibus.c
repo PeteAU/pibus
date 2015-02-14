@@ -1137,7 +1137,7 @@ static int ibus_50ms_tick(void *unused)
 		}
 	}
 
-	if (ibus.gpio_number > 0)
+	if (/*ibus.gpio_number > 0*/1)
 	{
 		if (ibus.bytes_read == 0)
 		{

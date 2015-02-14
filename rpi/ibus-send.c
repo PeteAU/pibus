@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <sys/ioctl.h>
 
 #include "gpio.h"
 #include "mainloop.h"
@@ -31,6 +32,14 @@ typedef struct
 packet;
 
 
+int get_cts(int fd)
+{
+	int currstat;
+
+	ioctl(fd, TIOCMGET, &currstat);
+
+	return ((currstat & TIOCM_CTS) ? 1 : 0);
+}
 
 /* called every 50ms */
 
@@ -61,6 +70,12 @@ bool ibus_service_queue(int ifd, bool can_send, int gpio_number, bool *giveup)
 
 	if (pkt_list)
 	{
+		if (gpio_number == 0 && !get_cts(ifd))
+		{
+			ibus_log("service_queue(): cts busy - waiting\n");
+			return TRUE;
+		}
+
 		/* Only send if GPIO 15 (UART RX) is high (idle state) */
 		if (!gpio_read(15))
 		{
@@ -211,18 +226,12 @@ void ibus_send(int ifd, const unsigned char *msg, int length, int gpio_number)
 {
 	ibus_log("send(%d): %02x %02x %02x queued\n", length, msg[0], msg[1], msg[2]);
 
-	if (gpio_number > 0)
-	{
-		ibus_add_to_queue(msg, length, 1, FALSE, FALSE, 0);
-	}
+	ibus_add_to_queue(msg, length, 1, FALSE, FALSE, 0);
 }
 
 void ibus_send_with_tag(int ifd, const unsigned char *msg, int length, int gpio_number, bool sync, bool prepend, int tag)
 {
 	ibus_log("send(%d): %02x %02x %02x queued (tag=%d)\n", length, msg[0], msg[1], msg[2], tag);
 
-	if (gpio_number > 0)
-	{
-		ibus_add_to_queue(msg, length, 1, sync, prepend, tag);
-	}
+	ibus_add_to_queue(msg, length, 1, sync, prepend, tag);
 }
