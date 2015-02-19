@@ -62,6 +62,7 @@ static struct
 	bool have_camera;
 	bool mk3_announce;
 	bool set_gps_time;
+	bool aux;
 
 	uint64_t last_byte;
 	int bufPos;
@@ -103,6 +104,7 @@ ibus =
 	.have_camera = TRUE,
 	.mk3_announce = TRUE,
 	.set_gps_time = FALSE,
+	.aux = FALSE,
 
 	.last_byte = 0,
 	.bufPos = 0,
@@ -554,6 +556,11 @@ static int cdchanger_interval_timeout(void *unused)
 
 static void cdchanger_handle_inforeq(const unsigned char *msg, int length)
 {
+	if (ibus.aux)
+	{
+		return;
+	}
+
 	cdchanger_send_inforeq();
 
 	if (ibus.cdc_info_interval > 0)
@@ -567,7 +574,7 @@ static void cdchanger_handle_inforeq(const unsigned char *msg, int length)
 	}
 }
 
-static void cdchanger_handle_cdcmode(const unsigned char *msg, int length)
+static void enter_pi_screen(const unsigned char *msg, int length)
 {
 	ibus.keyboard_blocked = FALSE;
 	ibus.playing = TRUE;
@@ -581,6 +588,11 @@ static void cdchanger_handle_cdcmode(const unsigned char *msg, int length)
 
 static void cdchanger_handle_stop(const unsigned char *msg, int length)
 {
+	if (ibus.aux)
+	{
+		return;
+	}
+
 	ibus_send(ibus.ifd, not_playing, 12, ibus.gpio_number);
 	ibus.playing = FALSE;
 
@@ -593,12 +605,22 @@ static void cdchanger_handle_stop(const unsigned char *msg, int length)
 
 static void cdchanger_handle_pause(const unsigned char *msg, int length)
 {
+	if (ibus.aux)
+	{
+		return;
+	}
+
 	ibus_send(ibus.ifd, pause_playing, 12, ibus.gpio_number);
 	ibus.playing = FALSE;
 }
 
 static void cdchanger_handle_start(const unsigned char *msg, int length)
 {
+	if (ibus.aux)
+	{
+		return;
+	}
+
 	ibus_send(ibus.ifd, start_playing, 12, ibus.gpio_number);
 	ibus.playing = TRUE;
 }
@@ -610,16 +632,38 @@ static void cdchanger_handle_diskchange(const unsigned char *msg, int length)
 		return;
 	}
 
+	if (ibus.aux)
+	{
+		return;
+	}
+
 	ibus_send(ibus.ifd, start_playing, 12, ibus.gpio_number);
 }
 
 static void cdchanger_handle_poll(const unsigned char *msg, int length)
 {
+	if (ibus.aux)
+	{
+		return;
+	}
+
 	RODATA cdc_im_here[] = "\x18\x04\xFF\x02\x00\xE1";
 
 	ibus_send(ibus.ifd, cdc_im_here, 6, ibus.gpio_number);
 	
 	ibus.cd_polled = TRUE;
+}
+
+static void ibus_handle_aux(const unsigned char *buf, int length)
+{
+	if (ibus.aux)
+	{
+		enter_pi_screen(buf, length);
+	}
+	else
+	{
+		ibus_handle_outsidekey(buf, length);
+	}
 }
 
 static bool is_cdc_message(const unsigned char *buf, int length)
@@ -765,7 +809,7 @@ events[] =
 	{4, "\x80\x0A\xBF\x13", "IKE sensor", NULL, 0, ibus_handle_ike_sensor},
 	{4, "\x80\x09\xBF\x13", "IKE sensor", NULL, 0, ibus_handle_ike_sensor},
 
-	{20,"\x68\x12\x3b\x23\x62\x10\x41\x55\x58\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x5c", NULL/*"aux"*/, NULL, 0, ibus_handle_outsidekey},
+	{20,"\x68\x12\x3b\x23\x62\x10\x41\x55\x58\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x5c", NULL/*"aux"*/, NULL, 0, ibus_handle_aux},
 
 #if 0
 	/* The most common CDC message */
@@ -791,9 +835,9 @@ static void ibus_handle_message(const unsigned char *msg, int length, const char
 	ibus_dump_hex(flog, msg, length, suffix);
 
 	/* are we entering the CDC screen? */
-	if (is_cdc_message(msg, length))
+	if (!ibus.aux && is_cdc_message(msg, length))
 	{
-		cdchanger_handle_cdcmode(msg, length);
+		enter_pi_screen(msg, length);
 	}
 
 	/* got a message from the radio */
@@ -1061,7 +1105,7 @@ static int ibus_1s_tick(void *unused)
 	if (i == 4)
 	{
 		fflush(flog);
-		if (ibus.mk3_announce)
+		if (ibus.mk3_announce && !ibus.aux)
 		{
 			announce_cdc();
 		}
@@ -1187,7 +1231,7 @@ static void ibus_send_ascii(const char *cmd)
 	fflush(flog);
 }
 
-int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool mk3, int cdc_info_interval, int gpio_number, int idle_timeout, int hw_version)
+int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool mk3, int cdc_info_interval, int gpio_number, int idle_timeout, int hw_version, bool aux)
 {
 	struct timespec ts;
 
@@ -1238,7 +1282,7 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 		return -2;
 	}
 
-	ibus_log("startup bt=%d cam=%d mk3=%d cdci=%d gpio=%d idle=%d hwv=%d [" __DATE__ "]\n", bluetooth, camera, mk3, cdc_info_interval, gpio_number, idle_timeout, hw_version);
+	ibus_log("startup bt=%d cam=%d mk3=%d cdci=%d gpio=%d idle=%d hwv=%d aux=%d [" __DATE__ "]\n", bluetooth, camera, mk3, cdc_info_interval, gpio_number, idle_timeout, hw_version, aux);
 	fflush(flog);
 
 	ibus.last_byte = mainloop_get_millisec();
@@ -1249,6 +1293,7 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 	ibus.gpio_number = gpio_number;
 	ibus.idle_timeout = idle_timeout;
 	ibus.hw_version = hw_version;
+	ibus.aux = aux;
 
 	mainloop_timeout_add(50, ibus_50ms_tick, NULL);
 	mainloop_timeout_add(1000, ibus_1s_tick, NULL);

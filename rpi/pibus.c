@@ -30,6 +30,7 @@ int main(int argc, char **argv)
 	int cdcinterval = 0;
 	bool gpio_changed = FALSE;
 	int idle_timeout = 300;
+	bool aux = FALSE;
 
 	mainloop_init();
 
@@ -37,6 +38,9 @@ int main(int argc, char **argv)
 	{
 		switch (opt)
 		{
+			case 'a':
+				aux = 1;
+				break;
 			case 'b':
 				bluetooth = 1;
 				break;
@@ -65,6 +69,7 @@ int main(int argc, char **argv)
 					"Usage: %s [flags] [serial-port]\n"
 					"\n"
 					"Flags:\n"
+					"\t-a           Use AUX input instead of CD changer (V4 boards only)\n"
 					"\t-b           Car has bluetooth, don't use Phone and Speak buttons\n"
 					"\t-c <time>    Force CDC-info replies every <time> seconds\n"
 					"\t-g <number>  GPIO number to use for IBUS line monitor (0 = Use TH3122)\n"
@@ -95,7 +100,7 @@ int main(int argc, char **argv)
 		return -4;
 	}
 
-	if (ibus_init(port, startup, bluetooth, camera, mk3, cdcinterval, gpio_number, idle_timeout, hw_version) != 0)
+	if (ibus_init(port, startup, bluetooth, camera, mk3, cdcinterval, gpio_number, idle_timeout, hw_version, aux) != 0)
 	{
 		return -2;
 	}
