@@ -34,7 +34,7 @@ int main(int argc, char **argv)
 
 	mainloop_init();
 
-	while ((opt = getopt(argc, argv, "c:g:s:t:v:bhmr")) != -1)
+	while ((opt = getopt(argc, argv, "c:g:s:t:v:abhmr")) != -1)
 	{
 		switch (opt)
 		{
@@ -59,6 +59,9 @@ int main(int argc, char **argv)
 				break;
 			case 's':
 				startup = strdup(optarg);
+				break;
+			case 't':
+				idle_timeout = atoi(optarg);
 				break;
 			case 'v':
 				hw_version = atoi(optarg);
