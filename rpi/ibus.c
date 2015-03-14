@@ -787,6 +787,11 @@ events[] =
 	{6, "\x50\x04\xc8\x3b\x80\x27", "speak", NULL, 0, ibus_handle_speak},
 	{7, "\x44\x05\xBF\x74\x00\xFF\x75", "immobilized", NULL, 0, ibus_handle_immobilized},
 
+	/* For MG Rover */
+	{5, "\x80\x0C\x3B\x24\x01", "time", NULL, 0, ibus_handle_time},
+	{5, "\x80\x0F\x3B\x24\x02", "date", NULL, 0, ibus_handle_date},
+
+	/* For BMW */
 	{5, "\x80\x0C\xFF\x24\x01", "time", NULL, 0, ibus_handle_time},
 	{5, "\x80\x0F\xFF\x24\x02", "date", NULL, 0, ibus_handle_date},
 
