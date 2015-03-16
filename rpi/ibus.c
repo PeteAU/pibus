@@ -77,6 +77,7 @@ static struct
 	int gpio_number;
 	int idle_timeout;
 	int hw_version;
+	int num_time_requests;
 
 	videoSource_t videoSource;
 	time_t start;
@@ -118,6 +119,7 @@ ibus =
 	.gpio_number = 0,
 	.idle_timeout = 0,
 	.hw_version = 0,
+	.num_time_requests = 0,
 
 	.videoSource = VIDEO_SRC_BMW,
 	.start = 0,
@@ -1113,11 +1115,12 @@ static int ibus_1s_tick(void *unused)
 	}
 
 	/* every 15s */
-	if (i == 8 || i == 23)
+	if ((i == 8 || i == 23) && ibus.num_time_requests <= 3)
 	{
 		if (!ibus.have_time)
 		{
 			ibus_request_time();
+			ibus.num_time_requests++;
 		}
 		if (!ibus.have_date)
 		{
