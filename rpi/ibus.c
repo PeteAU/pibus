@@ -71,7 +71,6 @@ static struct
 	int ifd;
 	int ifd_tag;
 	int radio_msgs;
-	int any_msgs;
 	int bytes_read;
 	int cdc_info_tag;
 	int cdc_info_interval;
@@ -113,7 +112,6 @@ ibus =
 	.ifd = -1,
 	.ifd_tag = -1,
 	.radio_msgs = 0,
-	.any_msgs = 0,
 	.bytes_read = 0,
 	.cdc_info_tag = -1,
 	.cdc_info_interval = 0,
@@ -851,8 +849,6 @@ static void ibus_handle_message(const unsigned char *msg, int length, const char
 		ibus.radio_msgs++;
 	}
 
-	ibus.any_msgs++;
-
 	for (i = 0; i < sizeof(events) / sizeof(events[0]); i++)
 	{
 		if (events[i].match_length > length)
@@ -1193,7 +1189,6 @@ static int ibus_50ms_tick(void *unused)
 			ibus_log("serial port is broken - reopening\n");
 			//ibus_discard_queue();
 			ibus_init_serial_port(TRUE);
-			ibus.any_msgs = 0;
 		}
 
 		if (ibus.bufPos == 0 && !can_send)
