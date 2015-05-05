@@ -705,6 +705,14 @@ static bool is_cdc_message(const unsigned char *buf, int length)
 		return TRUE;
 	}
 
+	/* USA 1998 750iL (AlpineWhiteV12) */
+	if (length == 14 &&
+		memcmp(buf, "\x68\x0c\x3b\x23\xc4\x20\x43\x44\x20\x31\x2d\x30\x34\xa7", 14) == 0)
+	{
+		ibus_log("ibus event: \033[32m%s\033[m\n", "US CD 1-04");
+		return TRUE;
+	}
+
 	return FALSE;
 }
 
