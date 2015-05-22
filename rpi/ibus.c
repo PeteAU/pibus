@@ -752,7 +752,7 @@ static const struct
 events[] =
 {
 	//{5, "\x50\x03\xC8\x01\x9A", "r/t", NULL, KEY_TAB},
-	{6, "\xF0\x04\xFF\x48\x07\x44", "clock", NULL, KEY_ESC},
+	{6, "\xF0\x04\xFF\x48\x07\x44", "clock", NULL, KEY_BACKSPACE},
 	{6, "\xF0\x04\x3B\x48\x05\x82", "enter", NULL, KEY_ENTER},
 	{6, "\xF0\x04\x68\x48\x14\xC0", "<>", NULL, KEY_TAB},
 	{4, "\xF0\x04\x3B\x49", "rotary", NULL, 0, ibus_handle_rotary},
