@@ -63,6 +63,7 @@ static struct
 	bool mk3_announce;
 	bool set_gps_time;
 	bool aux;
+	bool handle_nextprev;
 
 	uint64_t last_byte;
 	int bufPos;
@@ -105,6 +106,7 @@ ibus =
 	.mk3_announce = TRUE,
 	.set_gps_time = FALSE,
 	.aux = FALSE,
+	.handle_nextprev = FALSE,
 
 	.last_byte = 0,
 	.bufPos = 0,
@@ -716,6 +718,22 @@ static bool is_cdc_message(const unsigned char *buf, int length)
 	return FALSE;
 }
 
+static void ibus_handle_prev(const unsigned char *buf, int length)
+{
+	if (!ibus.keyboard_blocked && ibus.handle_nextprev)
+	{
+		keyboard_generate(KEY_COMMA);
+	}
+}
+
+static void ibus_handle_next(const unsigned char *buf, int length)
+{
+	if (!ibus.keyboard_blocked && ibus.handle_nextprev)
+	{
+		keyboard_generate(KEY_DOT);
+	}
+}
+
 static void ibus_l1(const unsigned char *buf, int length)
 {
 }
@@ -761,6 +779,14 @@ events[] =
 	{6, "\xF0\x04\x68\x48\x20\xF4", "select", NULL, 0, ibus_handle_outsidekey},
 	{7, "\xf0\x05\xff\x47\x00\x0f\x42", "select", NULL, 0, ibus_handle_outsidekey},
 	{7, "\xF0\x05\xFF\x47\x00\x38\x75", "info", NULL, 0, ibus_handle_outsidekey},
+
+	/* Steering wheel */
+	{6, "\x50\x04\x68\x3B\x01\x06", NULL, NULL, 0, ibus_handle_next},
+	{6, "\x50\x04\x68\x3B\x08\x0F", NULL, NULL, 0, ibus_handle_prev},
+
+	/* Board monitor */
+	{6, "\xF0\x04\x68\x48\x00\xD4", NULL, NULL, 0, ibus_handle_next},
+	{6, "\xF0\x04\x68\x48\x10\xC4", NULL, NULL, 0, ibus_handle_prev},
 
 	{6, "\xF0\x04\x68\x48\x40\x94", "FF", NULL, KEY_RIGHT|_CTRL_BIT},
 	{6, "\xF0\x04\x68\x48\x50\x84", "RR", NULL, KEY_LEFT|_CTRL_BIT},
@@ -1242,7 +1268,7 @@ static void ibus_send_ascii(const char *cmd)
 	fflush(flog);
 }
 
-int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool mk3, int cdc_info_interval, int gpio_number, int idle_timeout, int hw_version, bool aux)
+int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool mk3, int cdc_info_interval, int gpio_number, int idle_timeout, int hw_version, bool aux, bool handle_nextprev)
 {
 	struct timespec ts;
 
@@ -1305,6 +1331,7 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 	ibus.idle_timeout = idle_timeout;
 	ibus.hw_version = hw_version;
 	ibus.aux = aux;
+	ibus.handle_nextprev = handle_nextprev;
 
 	mainloop_timeout_add(50, ibus_50ms_tick, NULL);
 	mainloop_timeout_add(1000, ibus_1s_tick, NULL);
