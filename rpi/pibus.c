@@ -32,10 +32,11 @@ int main(int argc, char **argv)
 	int idle_timeout = 300;
 	bool aux = FALSE;
 	bool handle_nextprev = FALSE;
+	bool rotary_opposite = FALSE;
 
 	mainloop_init();
 
-	while ((opt = getopt(argc, argv, "c:g:s:t:v:abhmnr")) != -1)
+	while ((opt = getopt(argc, argv, "c:g:s:t:v:abhmnor")) != -1)
 	{
 		switch (opt)
 		{
@@ -57,6 +58,9 @@ int main(int argc, char **argv)
 				break;
 			case 'n':
 				handle_nextprev = TRUE;
+				break;
+			case 'o':
+				rotary_opposite = TRUE;
 				break;
 			case 'r':
 				camera = 0;
@@ -82,6 +86,7 @@ int main(int argc, char **argv)
 					"\t-g <number>  GPIO number to use for IBUS line monitor (0 = Use TH3122)\n"
 					"\t-m           Do not do MK3 style CDC announcements\n"
 					"\t-n           Handle Next/Prev buttons directly (only for some older radios)\n"
+					"\t-o           Make rotary dial direction opposite\n"
 					"\t-r           Do not switch to camera in reverse gear\n"
 					"\t-s <string>  Send extra string to IBUS at startup\n"
 					"\t-t <seconds> Set the idle timeout in seconds (V4 boards only, default 300)\n"
@@ -108,7 +113,7 @@ int main(int argc, char **argv)
 		return -4;
 	}
 
-	if (ibus_init(port, startup, bluetooth, camera, mk3, cdcinterval, gpio_number, idle_timeout, hw_version, aux, handle_nextprev) != 0)
+	if (ibus_init(port, startup, bluetooth, camera, mk3, cdcinterval, gpio_number, idle_timeout, hw_version, aux, handle_nextprev, rotary_opposite) != 0)
 	{
 		return -2;
 	}

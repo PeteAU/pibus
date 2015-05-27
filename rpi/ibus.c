@@ -64,6 +64,7 @@ static struct
 	bool set_gps_time;
 	bool aux;
 	bool handle_nextprev;
+	bool rotary_opposite;
 
 	uint64_t last_byte;
 	int bufPos;
@@ -107,6 +108,7 @@ ibus =
 	.set_gps_time = FALSE,
 	.aux = FALSE,
 	.handle_nextprev = FALSE,
+	.rotary_opposite = FALSE,
 
 	.last_byte = 0,
 	.bufPos = 0,
@@ -468,11 +470,11 @@ static void ibus_handle_rotary(const unsigned char *msg, int length)
 	switch (msg[4] & 0xF0)
 	{
 		case 0x80:
-			key = KEY_UP;
+			key = ibus.rotary_opposite ? KEY_DOWN : KEY_UP;
 			break;
 
 		case 0x00:
-			key = KEY_DOWN;
+			key = ibus.rotary_opposite ? KEY_UP : KEY_DOWN;
 			break;
 
 		default:
@@ -1268,7 +1270,7 @@ static void ibus_send_ascii(const char *cmd)
 	fflush(flog);
 }
 
-int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool mk3, int cdc_info_interval, int gpio_number, int idle_timeout, int hw_version, bool aux, bool handle_nextprev)
+int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool mk3, int cdc_info_interval, int gpio_number, int idle_timeout, int hw_version, bool aux, bool handle_nextprev, bool rotary_opposite)
 {
 	struct timespec ts;
 
@@ -1319,7 +1321,7 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 		return -2;
 	}
 
-	ibus_log("startup bt=%d cam=%d mk3=%d cdci=%d gpio=%d idle=%d hwv=%d aux=%d [" __DATE__ "]\n", bluetooth, camera, mk3, cdc_info_interval, gpio_number, idle_timeout, hw_version, aux);
+	ibus_log("startup bt=%d cam=%d mk3=%d cdci=%d gpio=%d idle=%d hwv=%d aux=%d hnp=%d rop=%d [" __DATE__ "]\n", bluetooth, camera, mk3, cdc_info_interval, gpio_number, idle_timeout, hw_version, aux, handle_nextprev, rotary_opposite);
 	fflush(flog);
 
 	ibus.last_byte = mainloop_get_millisec();
@@ -1332,6 +1334,7 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 	ibus.hw_version = hw_version;
 	ibus.aux = aux;
 	ibus.handle_nextprev = handle_nextprev;
+	ibus.rotary_opposite = rotary_opposite;
 
 	mainloop_timeout_add(50, ibus_50ms_tick, NULL);
 	mainloop_timeout_add(1000, ibus_1s_tick, NULL);
