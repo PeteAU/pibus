@@ -164,6 +164,24 @@ static void power_off(void)
 	fclose(flog);
 	flog = NULL;
 
+	if (ibus.ifd_tag != -1)
+	{
+		mainloop_input_remove(ibus.ifd_tag);
+		ibus.ifd_tag = -1;
+	}
+
+	if (ibus.ifd != -1)
+	{
+		close(ibus.ifd);
+		ibus.ifd = -1;
+	}
+
+	if (access("/storage/pibus-poweroff.sh", X_OK) == 0)
+	{
+		execl("/bin/sh", "sh", "-c", "/storage/pibus-poweroff.sh", (char *) 0);
+		/* doesn't return */
+	}
+
 	system("/bin/sync");
 	sleep(1);
 
@@ -1353,6 +1371,12 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 
 	if (hw_version >= 4)
 	{
+		/* These are factory defaults, but just make sure */
+		gpio_set_pull(GPIO_NSLP_CTL, PULL_DOWN);
+		gpio_set_pull(GPIO_PIN17_CTL, PULL_DOWN);
+		gpio_set_pull(GPIO_LED_CTL, PULL_DOWN);
+		gpio_set_pull(GPIO_RELAY_CTL, PULL_DOWN);
+
 		gpio_write(GPIO_NSLP_CTL, 1);	/* Wake up the transceiver */
 		gpio_write(GPIO_PIN17_CTL, 0);
 		gpio_write(GPIO_LED_CTL, 1);

@@ -133,13 +133,14 @@ void gpio_write(int gpio_number, int value)
 void gpio_set_pull(int gpio_number, pull_type pt)
 {
 	GPIO_PUD = pt;
-	usleep(64000);
+	usleep(1000);
 
 	GPIO_PUDCLK0 = (1 << gpio_number);
-	usleep(64000);
+	usleep(1000);
 
 	GPIO_PUD = 0;
 	GPIO_PUDCLK0 = 0;
+	usleep(1000);
 }
 
 #else
