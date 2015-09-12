@@ -735,6 +735,48 @@ static bool is_cdc_message(const unsigned char *buf, int length)
 		return TRUE;
 	}
 
+	{
+		static bool have_bin_msg = FALSE;
+		static unsigned char cdc_msg[64];
+		static int cdc_len;
+
+		struct stat st;
+		int len;
+		int fd;
+
+		if (!have_bin_msg)
+		{
+			fd = open("/storage/pibus-cdc.bin", O_RDONLY);
+			if (fd != -1)
+			{
+				if (fstat(fd, &st) == 0)
+				{
+					len = st.st_size;
+					if (len > sizeof (cdc_msg))
+					{
+						len = sizeof (cdc_msg);
+					}
+					if (read(fd, cdc_msg, len) == len)
+					{
+						have_bin_msg = TRUE;
+						cdc_len = len;
+					}
+				}
+				close(fd);
+			}
+		}
+
+		if (have_bin_msg)
+		{
+			if (length == cdc_len &&
+			    memcmp(buf, cdc_msg, length) == 0)
+			{
+				ibus_log("ibus event: \033[32m%s\033[m\n", "CDC BIN");
+				return TRUE;
+			}
+		}
+	}
+
 	return FALSE;
 }
 
