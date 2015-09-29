@@ -33,10 +33,11 @@ int main(int argc, char **argv)
 	bool aux = FALSE;
 	bool handle_nextprev = FALSE;
 	bool rotary_opposite = FALSE;
+	bool z4_keymap = FALSE;
 
 	mainloop_init();
 
-	while ((opt = getopt(argc, argv, "c:g:s:t:v:abhmnor")) != -1)
+	while ((opt = getopt(argc, argv, "c:g:s:t:v:z:abhmnor")) != -1)
 	{
 		switch (opt)
 		{
@@ -74,6 +75,12 @@ int main(int argc, char **argv)
 			case 'v':
 				hw_version = atoi(optarg);
 				break;
+			case 'z':
+				if (atoi(optarg) == 4)
+				{
+					z4_keymap = TRUE;
+				}
+				break;
 			case 'h':
 			default:
 				fprintf(stderr,
@@ -91,6 +98,7 @@ int main(int argc, char **argv)
 					"\t-s <string>  Send extra string to IBUS at startup\n"
 					"\t-t <seconds> Set the idle timeout in seconds (V4 boards only, default 300)\n"
 					"\t-v <number>  Set PiBUS hardware version\n"
+					"\t-z4          Use alternative Z4 keymap\n"
 					"\n",
 					argv[0]);
 				return -1;
@@ -113,7 +121,7 @@ int main(int argc, char **argv)
 		return -4;
 	}
 
-	if (ibus_init(port, startup, bluetooth, camera, mk3, cdcinterval, gpio_number, idle_timeout, hw_version, aux, handle_nextprev, rotary_opposite) != 0)
+	if (ibus_init(port, startup, bluetooth, camera, mk3, cdcinterval, gpio_number, idle_timeout, hw_version, aux, handle_nextprev, rotary_opposite, z4_keymap) != 0)
 	{
 		return -2;
 	}

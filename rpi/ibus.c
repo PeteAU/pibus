@@ -65,6 +65,7 @@ static struct
 	bool aux;
 	bool handle_nextprev;
 	bool rotary_opposite;
+	bool z4_keymap;
 
 	uint64_t last_byte;
 	int bufPos;
@@ -109,6 +110,7 @@ ibus =
 	.aux = FALSE,
 	.handle_nextprev = FALSE,
 	.rotary_opposite = FALSE,
+	.z4_keymap = FALSE,
 
 	.last_byte = 0,
 	.bufPos = 0,
@@ -820,6 +822,22 @@ static void ibus_l6(const unsigned char *buf, int length)
 {
 }
 
+static void ibus_handle_2(const unsigned char *buf, int length)
+{
+	if (ibus.z4_keymap)
+		keyboard_generate(KEY_TAB);
+	else
+		keyboard_generate(KEY_Z);
+}
+
+static void ibus_handle_4(const unsigned char *buf, int length)
+{
+	if (ibus.z4_keymap)
+		keyboard_generate(KEY_BACKSPACE);
+	else
+		keyboard_generate(KEY_I);
+}
+
 static const struct
 {
 	int match_length;
@@ -861,9 +879,9 @@ events[] =
 //	{6, "\xF0\x04\x68\x48\x43\x97", "L6", NULL, 0, ibus_l6},
 
 	{6, "\xF0\x04\x68\x48\x11\xC5", "1", NULL, KEY_SPACE},
-	{6, "\xF0\x04\x68\x48\x02\xD6", "4", NULL, KEY_I},
+	{6, "\xF0\x04\x68\x48\x02\xD6", "4", NULL, 0, ibus_handle_4},
 
-	{6, "\xF0\x04\x68\x48\x01\xD5", "2", NULL, KEY_Z},
+	{6, "\xF0\x04\x68\x48\x01\xD5", "2", NULL, 0, ibus_handle_2},
 	{6, "\xF0\x04\x68\x48\x13\xC7", "5", NULL, KEY_X},
 
 	{6, "\xF0\x04\x68\x48\x12\xC6", "3", NULL, KEY_LEFT},
@@ -1330,7 +1348,7 @@ static void ibus_send_ascii(const char *cmd)
 	fflush(flog);
 }
 
-int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool mk3, int cdc_info_interval, int gpio_number, int idle_timeout, int hw_version, bool aux, bool handle_nextprev, bool rotary_opposite)
+int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool mk3, int cdc_info_interval, int gpio_number, int idle_timeout, int hw_version, bool aux, bool handle_nextprev, bool rotary_opposite, bool z4_keymap)
 {
 	struct timespec ts;
 
@@ -1395,6 +1413,7 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 	ibus.aux = aux;
 	ibus.handle_nextprev = handle_nextprev;
 	ibus.rotary_opposite = rotary_opposite;
+	ibus.z4_keymap = z4_keymap;
 
 	mainloop_timeout_add(50, ibus_50ms_tick, NULL);
 	mainloop_timeout_add(1000, ibus_1s_tick, NULL);
