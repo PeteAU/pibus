@@ -929,6 +929,7 @@ events[] =
 	{4, "\x80\x09\xBF\x13", "IKE sensor", NULL, 0, ibus_handle_ike_sensor},
 
 	{20,"\x68\x12\x3b\x23\x62\x10\x41\x55\x58\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x5c", NULL/*"aux"*/, NULL, 0, ibus_handle_aux},
+	{10,"\x68\x08\x3b\x23\x62\x10\x41\x55\x58\x46", NULL/*"aux"*/, NULL, 0, ibus_handle_aux},
 
 #if 0
 	/* The most common CDC message */
