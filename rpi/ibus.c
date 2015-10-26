@@ -800,6 +800,13 @@ static void ibus_handle_next(const unsigned char *buf, int length)
 
 static void ibus_l1(const unsigned char *buf, int length)
 {
+	if (ibus.keyboard_blocked)
+	{
+		return;
+	}
+
+	if (ibus.z4_keymap)
+		keyboard_generate(KEY_I);
 }
 
 static void ibus_l2(const unsigned char *buf, int length)
@@ -822,20 +829,43 @@ static void ibus_l6(const unsigned char *buf, int length)
 {
 }
 
-static void ibus_handle_2(const unsigned char *buf, int length)
+static void ibus_handle_3(const unsigned char *buf, int length)
 {
+	if (ibus.keyboard_blocked)
+	{
+		return;
+	}
+
 	if (ibus.z4_keymap)
-		keyboard_generate(KEY_TAB);
+		keyboard_generate(KEY_X);
 	else
-		keyboard_generate(KEY_Z);
+		keyboard_generate(KEY_LEFT);
 }
 
 static void ibus_handle_4(const unsigned char *buf, int length)
 {
+	if (ibus.keyboard_blocked)
+	{
+		return;
+	}
+
 	if (ibus.z4_keymap)
 		keyboard_generate(KEY_BACKSPACE);
 	else
 		keyboard_generate(KEY_I);
+}
+
+static void ibus_handle_5(const unsigned char *buf, int length)
+{
+	if (ibus.keyboard_blocked)
+	{
+		return;
+	}
+
+	if (ibus.z4_keymap)
+		keyboard_generate(KEY_LEFT);
+	else
+		keyboard_generate(KEY_X);
 }
 
 static const struct
@@ -871,7 +901,7 @@ events[] =
 	{6, "\xF0\x04\x68\x48\x40\x94", "FF", NULL, KEY_RIGHT|_CTRL_BIT},
 	{6, "\xF0\x04\x68\x48\x50\x84", "RR", NULL, KEY_LEFT|_CTRL_BIT},
 
-//	{6, "\xF0\x04\x68\x48\x51\x85", "L1", NULL, 0, ibus_l1},
+	{6, "\xF0\x04\x68\x48\x51\x85", "L1", NULL, 0, ibus_l1},
 //	{6, "\xF0\x04\x68\x48\x41\x95", "L2", NULL, 0, ibus_l2},
 //	{6, "\xF0\x04\x68\x48\x52\x86", "L3", NULL, 0, ibus_l3},
 //	{6, "\xF0\x04\x68\x48\x42\x96", "L4", NULL, 0, ibus_l4},
@@ -881,10 +911,10 @@ events[] =
 	{6, "\xF0\x04\x68\x48\x11\xC5", "1", NULL, KEY_SPACE},
 	{6, "\xF0\x04\x68\x48\x02\xD6", "4", NULL, 0, ibus_handle_4},
 
-	{6, "\xF0\x04\x68\x48\x01\xD5", "2", NULL, 0, ibus_handle_2},
-	{6, "\xF0\x04\x68\x48\x13\xC7", "5", NULL, KEY_X},
+	{6, "\xF0\x04\x68\x48\x01\xD5", "2", NULL, KEY_Z},
+	{6, "\xF0\x04\x68\x48\x13\xC7", "5", NULL, 0, ibus_handle_5},
 
-	{6, "\xF0\x04\x68\x48\x12\xC6", "3", NULL, KEY_LEFT},
+	{6, "\xF0\x04\x68\x48\x12\xC6", "3", NULL, 0, ibus_handle_3},
 	{6, "\xF0\x04\x68\x48\x03\xD7", "6", NULL, KEY_RIGHT},
 
 	{6, "\xF0\x04\x68\x48\x23\xF7", "mode", NULL, 0, ibus_handle_outsidekey},
