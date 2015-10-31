@@ -193,6 +193,32 @@ static void power_off(void)
 		system("/sbin/poweroff");
 }
 
+/* Execute an external command in the HOMEDIR */
+
+static void ibus_exec(const char *cmd, const char *arg)
+{
+	int pid;
+	char path[256];
+	struct passwd *pw;
+	const char *homedir;
+
+	pw = getpwuid(getuid());
+	homedir = pw ? pw->pw_dir : "/storage";
+
+	snprintf(path, sizeof(path), "%s/%s", homedir, cmd);
+	path[sizeof(path) - 1] = 0;
+
+	if (access(path, X_OK) == 0)
+	{
+		pid = fork();
+		if (pid == 0)
+		{
+			execlp(path, cmd, arg, NULL);
+			_exit(0);
+		}
+	}
+}
+
 static void ibus_set_video(videoSource_t src)
 {
 	switch (src)
@@ -235,9 +261,11 @@ static void ibus_handle_ike_sensor(const unsigned char *msg, int length)
 		{
 			case 1:	/* reverse */
 				ibus_set_video(VIDEO_SRC_CAMERA);
+				ibus_exec("pibus-event.sh", "gear_reverse");
 				break;
 			default:	/* any other gear */
 				ibus_set_video(ibus.videoSource);
+				ibus_exec("pibus-event.sh", "gear_other");
 				break;
 		}
 	}
