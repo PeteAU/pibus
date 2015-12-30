@@ -261,13 +261,21 @@ static void ibus_handle_ike_sensor(const unsigned char *msg, int length)
 		{
 			case 1:	/* reverse */
 				ibus_set_video(VIDEO_SRC_CAMERA);
-				ibus_exec("pibus-event.sh", "gear_reverse");
 				break;
 			default:	/* any other gear */
 				ibus_set_video(ibus.videoSource);
-				ibus_exec("pibus-event.sh", "gear_other");
 				break;
 		}
+	}
+
+	switch (msg[5] >> 4)
+	{
+		case 1:	/* reverse */
+			ibus_exec("pibus-event.sh", "gear_reverse");
+			break;
+		default:	/* any other gear */
+			ibus_exec("pibus-event.sh", "gear_other");
+			break;
 	}
 }
 
