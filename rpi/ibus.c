@@ -736,7 +736,7 @@ static bool is_cdc_message(const unsigned char *buf, int length)
 		buf[13] == 0x34 &&
 		buf[19] == 0x4c)
 	{
-		ibus_log("ibus event: \033[32m%s\033[m\n", "CDC 1-04");
+		ibus_log("ibus event: CDC \033[32m%s\033[m\n", "CDC 1-04");
 		return TRUE;
 	}
 
@@ -748,7 +748,7 @@ static bool is_cdc_message(const unsigned char *buf, int length)
 		buf[9] == 0x30 &&
 		buf[10] == 0x34)
 	{
-		ibus_log("ibus event: \033[32m%s\033[m\n", "TR 04");
+		ibus_log("ibus event: CDC \033[32m%s\033[m\n", "TR 04");
 		return TRUE;
 	}
 
@@ -759,9 +759,9 @@ static bool is_cdc_message(const unsigned char *buf, int length)
 		buf[18] == 0x31 &&
 		buf[20] == 0x30 &&
 		buf[21] == 0x34 &&
-		buf[24] == 0x25)
+		(buf[24] == 0x25 || buf[24] == 0x35))
 	{
-		ibus_log("ibus event: \033[32m%s\033[m\n", "CD 1-04");
+		ibus_log("ibus event: CDC \033[32m%s\033[m\n", "CD 1-04");
 		return TRUE;
 	}
 
@@ -769,7 +769,7 @@ static bool is_cdc_message(const unsigned char *buf, int length)
 	if (length == 14 &&
 		memcmp(buf, "\x68\x0c\x3b\x23\xc4\x20\x43\x44\x20\x31\x2d\x30\x34\xa7", 14) == 0)
 	{
-		ibus_log("ibus event: \033[32m%s\033[m\n", "US CD 1-04");
+		ibus_log("ibus event: CDC \033[32m%s\033[m\n", "US CD 1-04");
 		return TRUE;
 	}
 
@@ -809,7 +809,7 @@ static bool is_cdc_message(const unsigned char *buf, int length)
 			if (length == cdc_len &&
 			    memcmp(buf, cdc_msg, length) == 0)
 			{
-				ibus_log("ibus event: \033[32m%s\033[m\n", "CDC BIN");
+				ibus_log("ibus event: CDC \033[32m%s\033[m\n", "CDC BIN");
 				return TRUE;
 			}
 		}
@@ -1009,6 +1009,9 @@ events[] =
 
 	/* This one was seen on a German E39 525i 05/2001 MK3 BM24 (DK) */
 	{25,"\x68\x17\x3b\x23\x62\x30\x20\x20\x07\x20\x20\x20\x20\x20\x08\x43\x44\x20\x31\x2d\x30\x34\x20\x20\x25", "CD 1-04", NULL, 0, cdchanger_handle_cdcmode},
+
+	/* This one was seen on a Finland MK2 */
+	{25,"\x68\x17\x3b\x23\x62\x20\x20\x20\x07\x20\x20\x20\x20\x20\x08\x43\x44\x20\x31\x2d\x30\x34\x20\x20\x35", "CD 1-04", NULL, 0, cdchanger_handle_cdcmode},
 #endif
 };
 
