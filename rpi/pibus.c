@@ -37,7 +37,7 @@ int main(int argc, char **argv)
 
 	mainloop_init();
 
-	while ((opt = getopt(argc, argv, "c:g:s:t:v:z:abhmnor")) != -1)
+	while ((opt = getopt(argc, argv, "c:g:s:t:v:z:abhmnorV")) != -1)
 	{
 		switch (opt)
 		{
@@ -75,6 +75,9 @@ int main(int argc, char **argv)
 			case 'v':
 				hw_version = atoi(optarg);
 				break;
+			case 'V':
+				printf("%s ["__DATE__"]\n", argv[0]);
+				exit(0);
 			case 'z':
 				if (atoi(optarg) == 4)
 				{
@@ -99,6 +102,7 @@ int main(int argc, char **argv)
 					"\t-t <seconds> Set the idle timeout in seconds (V4 boards only, default 300)\n"
 					"\t-v <number>  Set PiBUS hardware version\n"
 					"\t-z4          Use alternative Z4 keymap\n"
+					"\t-V           Show version information\n"
 					"\n",
 					argv[0]);
 				return -1;
