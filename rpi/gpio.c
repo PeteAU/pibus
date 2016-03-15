@@ -49,7 +49,8 @@ static int pi_v2()
 		if (read(fd, buf, sizeof (buf)) > 10)
 		{
 			buf[sizeof(buf) - 1] = 0;
-			if (strstr(buf, "ARMv7"))
+			/* Either of these are not an old V1 Pi */
+			if (strstr(buf, "ARMv7") || strstr(buf, "ARMv8"))
 			{
 				v2 = 1;
 			}
