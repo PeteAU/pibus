@@ -74,6 +74,7 @@ static struct
 	int ifd;
 	int ifd_tag;
 	int radio_msgs;
+	int read_msgs;
 	int bytes_read;
 	int cdc_info_tag;
 	int cdc_info_interval;
@@ -119,6 +120,7 @@ ibus =
 	.ifd = -1,
 	.ifd_tag = -1,
 	.radio_msgs = 0,
+	.read_msgs = 0,
 	.bytes_read = 0,
 	.cdc_info_tag = -1,
 	.cdc_info_interval = 0,
@@ -361,6 +363,7 @@ static void ibus_request_time(void)
 	/* CDChanger asks IKE for Time */
 	RODATA rt[] = "\x18\x05\x80\x41\x01\x01\xDC";
 
+	ibus_remove_tag_from_queue(TAG_TIME);
 	ibus_send_with_tag(ibus.ifd, rt, 7, ibus.gpio_number, FALSE, FALSE, TAG_TIME);
 }
 
@@ -369,6 +372,7 @@ static void ibus_request_date(void)
 	/* CDChanger asks IKE for Date */
 	RODATA rd[] = "\x18\x05\x80\x41\x02\x01\xDF";
 
+	ibus_remove_tag_from_queue(TAG_DATE);
 	ibus_send_with_tag(ibus.ifd, rd, 7, ibus.gpio_number, FALSE, FALSE, TAG_DATE);
 }
 
@@ -1046,6 +1050,8 @@ static void ibus_handle_message(const unsigned char *msg, int length, const char
 		ibus.radio_msgs++;
 	}
 
+	ibus.read_msgs++;
+
 	for (i = 0; i < sizeof(events) / sizeof(events[0]); i++)
 	{
 		if (events[i].match_length > length)
@@ -1312,14 +1318,21 @@ static int ibus_1s_tick(void *unused)
 	/* every 15s */
 	if ((i == 8 || i == 23) && ibus.num_time_requests <= 3)
 	{
-		if (!ibus.have_time)
+		if (ibus.read_msgs == 0)
 		{
-			ibus_request_time();
-			ibus.num_time_requests++;
+			ibus_log("ibus idle\n");
 		}
-		if (!ibus.have_date)
+		else
 		{
-			ibus_request_date();
+			if (!ibus.have_time)
+			{
+				ibus_request_time();
+				ibus.num_time_requests++;
+			}
+			if (!ibus.have_date)
+			{
+				ibus_request_date();
+			}
 		}
 	}
 
@@ -1333,26 +1346,40 @@ static int ibus_1s_tick(void *unused)
 	return 1;
 }
 
-/* every 50ms */
-
-static int ibus_50ms_tick(void *unused)
+static void ibus_update_leds()
 {
 	static int i = 0;
-	bool can_send;
-	uint64_t now;
-	bool giveup;
 
 	i++;
-	if (i >= 20)
+	if ((ibus.read_msgs && i >= 20) || i >= 60)
 	{
 		i = 0;
 	}
 
 	if (ibus.hw_version >= 4)
 	{
-		/* blink the LED */
-		gpio_write(GPIO_LED_CTL, (i < 2) ? 1 : 0);
+		if (ibus.read_msgs)
+		{
+			/* single blink */
+			gpio_write(GPIO_LED_CTL, (i < 2) ? 1 : 0);
+		}
+		else
+		{
+			/* double blink */
+			gpio_write(GPIO_LED_CTL, ((i < 2) || (i > 5 && i < 8)) ? 1 : 0);
+		}
 	}
+}
+
+/* every 50ms */
+
+static int ibus_50ms_tick(void *unused)
+{
+	bool can_send;
+	uint64_t now;
+	bool giveup;
+
+	ibus_update_leds();
 
 	/* this'll hardly ever happen */
 	if (ibus.bufPos)
