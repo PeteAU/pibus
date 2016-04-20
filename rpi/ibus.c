@@ -773,6 +773,14 @@ static bool is_cdc_message(const unsigned char *buf, int length)
 		return TRUE;
 	}
 
+	/* Norway 2004 E83 MK4 (WazKid) */
+	if (length == 15 &&
+		memcmp(buf, "\x68\x0d\x3b\x23\x62\x10\x43\x44\x43\x20\x31\x2d\x30\x34\x73", 15) == 0)
+	{
+		ibus_log("ibus event: CDC \033[32m%s\033[m\n", "E83 CDC 1-04");
+		return TRUE;
+	}
+
 	{
 		static bool have_bin_msg = FALSE;
 		static unsigned char cdc_msg[64];
@@ -1012,6 +1020,9 @@ events[] =
 
 	/* This one was seen on a Finland MK2 */
 	{25,"\x68\x17\x3b\x23\x62\x20\x20\x20\x07\x20\x20\x20\x20\x20\x08\x43\x44\x20\x31\x2d\x30\x34\x20\x20\x35", "CD 1-04", NULL, 0, cdchanger_handle_cdcmode},
+
+	/* This one was seen on a Norway E83 MK4 (WazKid) */
+	{15,"\x68\x0d\x3b\x23\x62\x10\x43\x44\x43\x20\x31\x2d\x30\x34\x73", "E83 CDC 1-04", NULL, 0, cdchanger_handle_cdcmode},
 #endif
 };
 
