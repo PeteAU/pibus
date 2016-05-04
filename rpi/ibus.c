@@ -785,6 +785,14 @@ static bool is_cdc_message(const unsigned char *buf, int length)
 		return TRUE;
 	}
 
+	/* Spain E39 530d MK2 (phantrax) */
+	if (length == 18 &&
+		memcmp(buf, "\x68\x10\x3b\x23\xc4\x30\x43\x44\x20\x31\x2d\x30\x34\x20\x20\x20\x20\xab", 18) == 0)
+	{
+		ibus_log("ibus event: CDC \033[32m%s\033[m\n", "E39 CD 1-04");
+		return TRUE;
+	}
+
 	{
 		static bool have_bin_msg = FALSE;
 		static unsigned char cdc_msg[64];
@@ -1027,6 +1035,9 @@ events[] =
 
 	/* This one was seen on a Norway E83 MK4 (WazKid) */
 	{15,"\x68\x0d\x3b\x23\x62\x10\x43\x44\x43\x20\x31\x2d\x30\x34\x73", "E83 CDC 1-04", NULL, 0, cdchanger_handle_cdcmode},
+
+	/* This one was seen on a Spain E39 530d (phantrax) */
+	{18,"\x68\x10\x3b\x23\xc4\x30\x43\x44\x20\x31\x2d\x30\x34\x20\x20\x20\x20\xab", "E39-530d CD 1-04", NULL, 0, cdchanger_handle_cdcmode},phantrax
 #endif
 };
 
