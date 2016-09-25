@@ -28,6 +28,7 @@
 #include "mainloop.h"
 #include "ibus-send.h"
 #include "ibus.h"
+#include "server.h"
 
 #define SOURCE 0
 #define LENGTH 1
@@ -1049,6 +1050,8 @@ static void ibus_handle_message(const unsigned char *msg, int length, const char
 	ibus_log("");
 	ibus_dump_hex(flog, msg, length, suffix);
 
+	server_handle_message(msg, length);
+
 	/* are we entering the CDC screen? */
 	if (!ibus.aux && is_cdc_message(msg, length))
 	{
@@ -1092,7 +1095,7 @@ static void ibus_handle_message(const unsigned char *msg, int length, const char
 				events[i].function(msg, length);
 			}
 
-			return;
+			break;
 		}
 	}
 
@@ -1443,16 +1446,16 @@ static int ibus_50ms_tick(void *unused)
 	return 1;
 }
 
-static void ibus_send_ascii(const char *cmd)
+int ibus_send_ascii(const char *cmd)
 {
 	char byte[4];
-	unsigned char data[64];
+	unsigned char data[256];
 	int len = strlen(cmd);
 	int i, j;
 
 	if (len >= (sizeof(data) * 2))
 	{
-		return;
+		return 1;
 	}
 
 	for (i = 0, j = 0; i < len; i += 2, j++)
@@ -1463,11 +1466,18 @@ static void ibus_send_ascii(const char *cmd)
 		data[j] = strtoul(byte, NULL, 16);
 	}
 
+	/* length error? */
+	if (data[1] + 2 != j || j < 5 || j > 255)
+	{
+		return 2;
+	}
+
 	ibus_send(ibus.ifd, data, j, ibus.gpio_number);
-	fflush(flog);
+
+	return 0;
 }
 
-int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool mk3, int cdc_info_interval, int gpio_number, int idle_timeout, int hw_version, bool aux, bool handle_nextprev, bool rotary_opposite, bool z4_keymap)
+int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool mk3, int cdc_info_interval, int gpio_number, int idle_timeout, int hw_version, bool aux, bool handle_nextprev, bool rotary_opposite, bool z4_keymap, int server_port)
 {
 	struct timespec ts;
 
@@ -1590,7 +1600,13 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 	if (startup)
 	{
 		ibus_send_ascii(startup);
+		fflush(flog);
 		free(startup);
+	}
+
+	if (server_port)
+	{
+		server_init(server_port);
 	}
 
 	return 0;
@@ -1603,5 +1619,7 @@ void ibus_cleanup(void)
 		close(ibus.ifd);
 		ibus.ifd = -1;
 	}*/
+
+	server_cleanup();
 }
 

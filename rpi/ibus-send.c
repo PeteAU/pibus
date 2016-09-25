@@ -11,6 +11,7 @@
 #include "ibus.h"
 #include "ibus-send.h"
 #include "slist.h"
+#include "server.h"
 
 
 extern FILE *flog;
@@ -109,6 +110,9 @@ bool ibus_service_queue(int ifd, bool can_send, int gpio_number, bool *giveup)
 			ibus_log("service_queue(%d): ", pkt->length);
 			ibus_dump_hex(flog, pkt->msg, pkt->length, NULL);
 			write(ifd, pkt->msg, pkt->length);
+
+			/* tell the server we're transmitting a message now */
+			server_notify_tx(pkt->msg, pkt->length);
 
 			pkt->transmit_count++;
 			if (pkt->transmit_count > 3 && !port_good)

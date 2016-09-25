@@ -116,6 +116,7 @@ int mainloop_input_add(int sok, int flags, socket_callback func, void *data)
 	se->rread = flags & FIA_READ;
 	se->wwrite = flags & FIA_WRITE;
 	se->eexcept = flags & FIA_EX;
+	se->checked = 0;
 	se->callback = func;
 	se->userdata = data;
 	se_list = slist_prepend(se_list, se);
