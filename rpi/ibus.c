@@ -58,10 +58,9 @@ static struct
 	bool have_date;
 	bool playing;
 	bool keyboard_blocked;
-	bool cd_polled;
 	bool bluetooth;
 	bool have_camera;
-	bool mk3_announce;
+	bool cdc_announce;
 	bool set_gps_time;
 	bool aux;
 	bool handle_nextprev;
@@ -74,7 +73,6 @@ static struct
 	char *port_name;
 	int ifd;
 	int ifd_tag;
-	int radio_msgs;
 	int read_msgs;
 	int bytes_read;
 	int cdc_info_tag;
@@ -104,10 +102,9 @@ ibus =
 	.have_date = FALSE,
 	.playing = FALSE,
 	.keyboard_blocked = TRUE,
-	.cd_polled = FALSE,
 	.bluetooth = FALSE,
 	.have_camera = TRUE,
-	.mk3_announce = TRUE,
+	.cdc_announce = TRUE,
 	.set_gps_time = FALSE,
 	.aux = FALSE,
 	.handle_nextprev = FALSE,
@@ -120,7 +117,6 @@ ibus =
 	.port_name = NULL,
 	.ifd = -1,
 	.ifd_tag = -1,
-	.radio_msgs = 0,
 	.read_msgs = 0,
 	.bytes_read = 0,
 	.cdc_info_tag = -1,
@@ -609,7 +605,7 @@ static void cdchanger_send_inforeq(void)
 	}
 
 	/* No more announcements */
-	ibus.cd_polled = TRUE;
+	ibus.cdc_announce = FALSE;
 }
 
 static int cdchanger_interval_timeout(void *unused)
@@ -715,8 +711,25 @@ static void cdchanger_handle_poll(const unsigned char *msg, int length)
 	RODATA cdc_im_here[] = "\x18\x04\xFF\x02\x00\xE1";
 
 	ibus_send(ibus.ifd, cdc_im_here, 6, ibus.gpio_number);
-	
-	ibus.cd_polled = TRUE;
+}
+
+/*
+	Somebody on the internet said:
+	When the I-Bus wakes up, the CD player starts to announce it-self ("02 01" msg) every 30 secondes
+	until the radio poll ("01"). At the first poll, the CD will send a poll response ("02 00"),
+	then will respond to each next poll (every 30 secondes).
+	If the CD doesn't respond to the poll, the radio considers that there is no CD Player (or not anymore).
+*/
+static void cdchanger_announce()
+{
+	if (ibus.cdc_announce)
+	{
+		RODATA cdc_announce[] = "\x18\x04\xFF\x02\x01\xE0";
+		ibus_send(ibus.ifd, cdc_announce, 6, ibus.gpio_number);
+
+		/* Don't do it again */
+		ibus.cdc_announce = FALSE;
+	}
 }
 
 static void ibus_handle_aux(const unsigned char *buf, int length)
@@ -1067,9 +1080,9 @@ static void ibus_handle_message(const unsigned char *msg, int length, const char
 	}
 
 	/* got a message from the radio */
-	if (msg[0] == 0x68)
+	if (msg[0] == 0x68 && !ibus.aux)
 	{
-		ibus.radio_msgs++;
+		cdchanger_announce();
 	}
 
 	ibus.read_msgs++;
@@ -1252,26 +1265,6 @@ retry:
 
 }
 
-/*
-	When the I-Bus wakes up, the CD player starts to announce it-self ("02 01" msg) every 30 secondes 
-	until the radio poll ("01"). At the first poll, the CD will send a poll response ("02 00"), 
-	then will respond to each next poll (every 30 secondes).
-	If the CD doesn't respond to the poll, the radio considers that there is no CD Player (or not anymore).
-*/
-static void announce_cdc()
-{
-	if (!ibus.cd_polled)
-	{
-		/* If the radio is silent, don't do this announcement */
-		if (ibus.radio_msgs != 0)
-		{
-			RODATA cdc_announce[] = "\x18\x04\xFF\x02\x01\xE0";
-			ibus_send(ibus.ifd, cdc_announce, 6, ibus.gpio_number);
-			ibus.radio_msgs = 0;
-		}
-	}
-}
-
 static int ibus_init_serial_port(bool have_log)
 {
 	struct termios newtio;
@@ -1331,10 +1324,6 @@ static int ibus_1s_tick(void *unused)
 	if (i == 4)
 	{
 		fflush(flog);
-		if (ibus.mk3_announce && !ibus.aux)
-		{
-			announce_cdc();
-		}
 	}
 
 	/* every 15s */
@@ -1485,7 +1474,7 @@ int ibus_send_ascii(const char *cmd)
 	return 0;
 }
 
-int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool mk3, int cdc_info_interval, int gpio_number, int idle_timeout, int hw_version, bool aux, bool handle_nextprev, bool rotary_opposite, bool z4_keymap, int server_port)
+int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool cdc_announce, int cdc_info_interval, int gpio_number, int idle_timeout, int hw_version, bool aux, bool handle_nextprev, bool rotary_opposite, bool z4_keymap, int server_port)
 {
 	struct timespec ts;
 
@@ -1536,13 +1525,13 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 		return -2;
 	}
 
-	ibus_log("startup bt=%d cam=%d mk3=%d cdci=%d gpio=%d idle=%d hwv=%d aux=%d hnp=%d rop=%d [" __DATE__ "]\n", bluetooth, camera, mk3, cdc_info_interval, gpio_number, idle_timeout, hw_version, aux, handle_nextprev, rotary_opposite);
+	ibus_log("startup bt=%d cam=%d anc=%d cdci=%d gpio=%d idle=%d hwv=%d aux=%d hnp=%d rop=%d [" __DATE__ "]\n", bluetooth, camera, cdc_announce, cdc_info_interval, gpio_number, idle_timeout, hw_version, aux, handle_nextprev, rotary_opposite);
 	fflush(flog);
 
 	ibus.last_byte = mainloop_get_millisec();
 	ibus.bluetooth = bluetooth;
 	ibus.have_camera = camera;
-	ibus.mk3_announce = mk3;
+	ibus.cdc_announce = cdc_announce;
 	ibus.cdc_info_interval = cdc_info_interval;
 	ibus.gpio_number = gpio_number;
 	ibus.idle_timeout = idle_timeout;

@@ -21,7 +21,7 @@ int main(int argc, char **argv)
 {
 	int opt;
 	bool bluetooth = FALSE;
-	bool mk3 = TRUE;
+	bool cdc_announce = TRUE;
 	bool camera = TRUE;
 	int hw_version = 0;
 	int gpio_number = 18;
@@ -56,7 +56,7 @@ int main(int argc, char **argv)
 				gpio_changed = TRUE;
 				break;
 			case 'm':
-				mk3 = 0;
+				cdc_announce = FALSE;
 				break;
 			case 'n':
 				handle_nextprev = TRUE;
@@ -98,7 +98,7 @@ int main(int argc, char **argv)
 					"\t-b           Car has bluetooth, don't use Phone and Speak buttons\n"
 					"\t-c <time>    Force CDC-info replies every <time> seconds\n"
 					"\t-g <number>  GPIO number to use for IBUS line monitor (0 = Use TH3122)\n"
-					"\t-m           Do not do MK3 style CDC announcements\n"
+					"\t-m           Do not do CDC reset announcements\n"
 					"\t-n           Handle Next/Prev buttons directly (only for some older radios)\n"
 					"\t-o           Make rotary dial direction opposite\n"
 					"\t-p           TCP server port number (default: 55537)\n"
@@ -130,7 +130,7 @@ int main(int argc, char **argv)
 		return -4;
 	}
 
-	if (ibus_init(port, startup, bluetooth, camera, mk3, cdcinterval, gpio_number, idle_timeout, hw_version, aux, handle_nextprev, rotary_opposite, z4_keymap, server_port) != 0)
+	if (ibus_init(port, startup, bluetooth, camera, cdc_announce, cdcinterval, gpio_number, idle_timeout, hw_version, aux, handle_nextprev, rotary_opposite, z4_keymap, server_port) != 0)
 	{
 		return -2;
 	}
