@@ -794,6 +794,14 @@ static bool is_cdc_message(const unsigned char *buf, int length)
 		return TRUE;
 	}
 
+	/* Germany X3 (Tom Z.) */
+	if (length == 12 &&
+		memcmp(buf, "\x68\x0a\x3b\x23\x62\x10\x54\x52\x20\x30\x34\x2a", 12) == 0)
+	{
+		ibus_log("ibus event: CDC \033[32m%s\033[m\n", "X3 TR 04");
+		return TRUE;
+	}
+
 	{
 		static bool have_bin_msg = FALSE;
 		static unsigned char cdc_msg[64];
