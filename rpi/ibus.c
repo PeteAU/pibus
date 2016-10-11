@@ -77,6 +77,7 @@ static struct
 	int bytes_read;
 	int cdc_info_tag;
 	int cdc_info_interval;
+	int cdc_timeouts;
 	int gpio_number;
 	int idle_timeout;
 	int hw_version;
@@ -121,6 +122,7 @@ ibus =
 	.bytes_read = 0,
 	.cdc_info_tag = -1,
 	.cdc_info_interval = 0,
+	.cdc_timeouts = 0,
 	.gpio_number = 0,
 	.idle_timeout = 0,
 	.hw_version = 0,
@@ -610,6 +612,17 @@ static void cdchanger_send_inforeq(void)
 
 static int cdchanger_interval_timeout(void *unused)
 {
+	ibus.cdc_timeouts++;
+	if (ibus.cdc_timeouts >= 5)
+	{
+		/* The car has stopped issuing cd-info requests for
+		 * some reason and no immobilized event occured!
+		 * Avoid battery drain and staying awake.
+		 */
+		ibus_log("too many cdc interval timeouts\n");
+		return 0;
+	}
+
 	ibus_log("cdc interval timeout (%d s)\n", ibus.cdc_info_interval);
 	cdchanger_send_inforeq();
 	return 1;
@@ -622,6 +635,7 @@ static void cdchanger_handle_inforeq(const unsigned char *msg, int length)
 		return;
 	}
 
+	ibus.cdc_timeouts = 0;
 	cdchanger_send_inforeq();
 
 	if (ibus.cdc_info_interval > 0)
