@@ -1047,6 +1047,7 @@ events[] =
 
 	/* These are handled by the ATtiny on V2 and V3 boards */
 	{6, "\xF0\x04\xFF\x48\x08\x4B", "phone", NULL, 0, ibus_handle_phone},
+	{4, "\x80\x0C\xBF\x13", "IKE sensor", NULL, 0, ibus_handle_ike_sensor},
 	{4, "\x80\x0A\xBF\x13", "IKE sensor", NULL, 0, ibus_handle_ike_sensor},
 	{4, "\x80\x09\xBF\x13", "IKE sensor", NULL, 0, ibus_handle_ike_sensor},
 
