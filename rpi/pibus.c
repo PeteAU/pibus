@@ -35,10 +35,11 @@ int main(int argc, char **argv)
 	bool handle_nextprev = FALSE;
 	bool rotary_opposite = FALSE;
 	bool z4_keymap = FALSE;
+	int log_level = 2;
 
 	mainloop_init();
 
-	while ((opt = getopt(argc, argv, "c:g:p:s:t:v:z:abhmnorV")) != -1)
+	while ((opt = getopt(argc, argv, "c:g:l:p:s:t:v:z:abhmnorV")) != -1)
 	{
 		switch (opt)
 		{
@@ -54,6 +55,9 @@ int main(int argc, char **argv)
 			case 'g':
 				gpio_number = atoi(optarg);
 				gpio_changed = TRUE;
+				break;
+			case 'l':
+				log_level = atoi(optarg);
 				break;
 			case 'm':
 				cdc_announce = FALSE;
@@ -98,8 +102,9 @@ int main(int argc, char **argv)
 					"\t-b           Car has bluetooth, don't use Phone and Speak buttons\n"
 					"\t-c <time>    Force CDC-info replies every <time> seconds\n"
 					"\t-g <number>  GPIO number to use for IBUS line monitor (0 = Use TH3122)\n"
+					"\t-l <level>   Logging level (0=none 1=basic 2=default 3=verbose)\n"
 					"\t-m           Do not do CDC reset announcements\n"
-					"\t-n           Handle Next/Prev buttons directly (only for some older radios)\n"
+					"\t-n           Handle Next/Prev buttons directly (some radios need it)\n"
 					"\t-o           Make rotary dial direction opposite\n"
 					"\t-p           TCP server port number (default: 55537)\n"
 					"\t-r           Do not switch to camera in reverse gear\n"
@@ -130,7 +135,7 @@ int main(int argc, char **argv)
 		return -4;
 	}
 
-	if (ibus_init(port, startup, bluetooth, camera, cdc_announce, cdcinterval, gpio_number, idle_timeout, hw_version, aux, handle_nextprev, rotary_opposite, z4_keymap, server_port) != 0)
+	if (ibus_init(port, startup, bluetooth, camera, cdc_announce, cdcinterval, gpio_number, idle_timeout, hw_version, aux, handle_nextprev, rotary_opposite, z4_keymap, server_port, log_level) != 0)
 	{
 		return -2;
 	}

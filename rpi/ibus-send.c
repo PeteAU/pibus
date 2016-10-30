@@ -12,9 +12,8 @@
 #include "ibus-send.h"
 #include "slist.h"
 #include "server.h"
+#include "log.h"
 
-
-extern FILE *flog;
 
 static SList *pkt_list = NULL;
 static bool port_good = FALSE;
@@ -73,21 +72,21 @@ bool ibus_service_queue(int ifd, bool can_send, int gpio_number, bool *giveup)
 	{
 		if (gpio_number == 0 && !get_cts(ifd))
 		{
-			ibus_log("service_queue(): cts busy - waiting\n");
+			log_msg("service_queue(): cts busy - waiting\n");
 			return TRUE;
 		}
 
 		/* Only send if GPIO 15 (UART RX) is high (idle state) */
 		if (!gpio_read(15))
 		{
-			ibus_log("service_queue(): ibus/gpio busy - waiting\n");
+			log_msg("service_queue(): ibus/gpio busy - waiting\n");
 			return TRUE;
 		}
 
 		/* If the RX FIFO contains bytes, don't send now! */
 		if (!uart_rx_fifo_empty())
 		{
-			ibus_log("service_queue(): rx fifo not empty - waiting\n");
+			log_msg("service_queue(): rx fifo not empty - waiting\n");
 			return TRUE;
 		}
 	}
@@ -107,8 +106,7 @@ bool ibus_service_queue(int ifd, bool can_send, int gpio_number, bool *giveup)
 
 		if (pkt->countdown == 0)
 		{
-			ibus_log("service_queue(%d): ", pkt->length);
-			ibus_dump_hex(flog, pkt->msg, pkt->length, NULL);
+			log_msg_with_hex(pkt->msg, pkt->length, "service_queue len=%d data=", pkt->length);
 			write(ifd, pkt->msg, pkt->length);
 
 			/* tell the server we're transmitting a message now */
@@ -164,7 +162,7 @@ void ibus_remove_from_queue(const unsigned char *msg, int length)
 		if (pkt->length == length && memcmp(pkt->msg, msg, length) == 0)
 		{
 			port_good = TRUE;
-			ibus_log("remove_queue(%d): success - dequeued\n", length);
+			log_msg("remove_queue len=%d success\n", length);
 			pkt_list = slist_remove(pkt_list, pkt);
 			free (pkt);
 			return;
@@ -228,14 +226,14 @@ static void ibus_add_to_queue(const unsigned char *msg, int length, int countdow
 
 void ibus_send(int ifd, const unsigned char *msg, int length, int gpio_number)
 {
-	ibus_log("send(%d): %02x %02x %02x queued\n", length, msg[0], msg[1], msg[2]);
+	log_msg_with_hex(msg, length, "send len=%d data=", length);
 
 	ibus_add_to_queue(msg, length, 1, FALSE, FALSE, 0);
 }
 
 void ibus_send_with_tag(int ifd, const unsigned char *msg, int length, int gpio_number, bool sync, bool prepend, int tag)
 {
-	ibus_log("send(%d): %02x %02x %02x queued (tag=%d)\n", length, msg[0], msg[1], msg[2], tag);
+	log_msg_with_hex(msg, length, "send len=%d tag=%d data=", length, tag);
 
 	ibus_add_to_queue(msg, length, 1, sync, prepend, tag);
 }

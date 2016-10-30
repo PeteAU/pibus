@@ -29,6 +29,7 @@
 #include "ibus-send.h"
 #include "ibus.h"
 #include "server.h"
+#include "log.h"
 
 #define SOURCE 0
 #define LENGTH 1
@@ -84,7 +85,6 @@ static struct
 	int num_time_requests;
 
 	videoSource_t videoSource;
-	time_t start;
 
 	struct
 	{
@@ -129,32 +129,8 @@ ibus =
 	.num_time_requests = 0,
 
 	.videoSource = VIDEO_SRC_BMW,
-	.start = 0,
 };
 
-FILE *flog;
-
-void ibus_log(char *fmt, ...)
-{
-	static char buf[512];
-	va_list args;
-	struct timespec ts;
-	int len;
-
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	sprintf(buf, "%6.6lu.%03lu ", ts.tv_sec - ibus.start, ts.tv_nsec / 1000000);
-	len = 11;
-
-	va_start(args, fmt);
-	len += vsnprintf(buf + 11, sizeof(buf) - 12, fmt, args);
-	va_end(args);
-
-	buf[sizeof(buf) - 1] = '\0';
-	if (len < 0 || len > (sizeof(buf) - 1))
-		len = strlen (buf);
-
-	fwrite(buf, len, 1, flog);
-}
 
 static void power_off(void)
 {
@@ -163,9 +139,7 @@ static void power_off(void)
 		gpio_write(GPIO_LED_CTL, 1);
 	}
 
-	fflush(flog);
-	fclose(flog);
-	flog = NULL;
+	log_close();
 
 	if (ibus.ifd_tag != -1)
 	{
@@ -299,64 +273,6 @@ static bool ibus_good_checksum(const unsigned char *msg, int length)
 	return TRUE;
 }
 
-void ibus_dump_hex(FILE *out, const unsigned char *data, int length, const char *suffix)
-{
-	int i;
-
-	for (i = 0; i < length; i++)
-	{
-		if ((i + 1) == length)
-			fprintf(out, "%02x", data[i]);
-		else
-			fprintf(out, "%02x ", data[i]);
-	}
-
-	/* menu text */
-	if (length > 8 && data[2] == 0x3b && (data[3] == 0xa5 || data[3] == 0x21))
-	{
-		fprintf(out, " \"%.*s\"", length - 8, data + 7);
-	}
-	else if (length > 7 && data[2] == 0x3b && (data[3] == 0x23))
-	{
-		fprintf(out, " \"%.*s\"", length - 7, data + 6);
-	}
-	else if (length == 5 && memcmp(data, "\xf0\x03\x68\x01\x9a", 5) == 0)
-	{
-		fprintf(out, "    Radio status req");
-	}
-	else if (length == 6 && memcmp(data, "\x68\x04\xbf\x02", 4) == 0)
-	{
-		fprintf(out, " Radio status reply 0x%02x", data[4]);
-	}
-	else if (length == 7 && memcmp(data, "\x68\x05\xbf\x02", 4) == 0)
-	{
-		fprintf(out, " Radio status reply 0x%02x", data[4]);
-	}
-
-	else if (length == 8 && memcmp(data, "\x68\x06\xf0\x38\x01\x00\x00\xa7", 8) == 0)
-	{
-		fprintf(out, " Stop single-slot-CD");
-	}
-	else if (length == 22 && memcmp(data, "\x7f\x14\xc8\xa2\x01", 5) == 0)
-	{
-		char stamp[16];
-		time_t now = time(NULL);
-		struct tm *tm = localtime(&now);
-
-		strftime(stamp, sizeof(stamp), "%T", tm);
-		fprintf(out, " GPS: %02x:%02x:%02x RPi: %s", data[18], data[19], data[20], stamp);
-	}
-
-	if (suffix && suffix[0])
-	{
-		fprintf(out, " %s\n", suffix);
-	}
-	else
-	{
-		fprintf(out, "\n");
-	}
-}
-
 static void ibus_request_time(void)
 {
 	/* CDChanger asks IKE for Time */
@@ -405,13 +321,13 @@ static void ibus_set_time_and_date(bool change_date, bool change_time)
 
 		if (change_date && change_time)
 		{
-			ibus_log("setting date: %04d/%02d/%02d %02d:%02d:%02d\n",
+			log_msg("setting date: %04d/%02d/%02d %02d:%02d:%02d\n",
 				 ibus.datetime.year, ibus.datetime.month, ibus.datetime.day,
 				 ibus.datetime.hours, ibus.datetime.minutes, ibus.datetime.seconds);
 		}
 		else if (change_time)
 		{
-			ibus_log("setting date: ----/--/-- %02d:%02d:%02d\n",
+			log_msg("setting date: ----/--/-- %02d:%02d:%02d\n",
 				 ibus.datetime.hours, ibus.datetime.minutes, ibus.datetime.seconds);
 		}
 	}
@@ -557,19 +473,6 @@ static void ibus_handle_outsidekey(const unsigned char *msg, int length)
 	}
 }
 
-static void ibus_handle_toneselectoff(const unsigned char *msg, int length)
-{
-	/* screen cleared - refresh required */
-}
-
-static void ibus_handle_screen(const unsigned char *msg, int length)
-{
-	if (length > 5)
-	{
-		ibus_log("\033[31munknown screen 0x%02X\033[m\n", msg[4]);
-	}
-}
-
 static void ibus_handle_speak(const unsigned char *msg, int length)
 {
 	if (!ibus.keyboard_blocked && !ibus.bluetooth)
@@ -619,11 +522,11 @@ static int cdchanger_interval_timeout(void *unused)
 		 * some reason and no immobilized event occured!
 		 * Avoid battery drain and staying awake.
 		 */
-		ibus_log("too many cdc interval timeouts\n");
+		log_msg("too many cdc interval timeouts\n");
 		return 0;
 	}
 
-	ibus_log("cdc interval timeout (%d s)\n", ibus.cdc_info_interval);
+	log_msg("cdc interval timeout (%d s)\n", ibus.cdc_info_interval);
 	cdchanger_send_inforeq();
 	return 1;
 }
@@ -768,7 +671,7 @@ static bool is_cdc_message(const unsigned char *buf, int length)
 		buf[13] == 0x34 &&
 		buf[19] == 0x4c)
 	{
-		ibus_log("ibus event: CDC \033[32m%s\033[m\n", "CDC 1-04");
+		log_msg("CDC: %s\n", "CDC 1-04");
 		return TRUE;
 	}
 
@@ -780,7 +683,7 @@ static bool is_cdc_message(const unsigned char *buf, int length)
 		buf[9] == 0x30 &&
 		buf[10] == 0x34)
 	{
-		ibus_log("ibus event: CDC \033[32m%s\033[m\n", "TR 04");
+		log_msg("CDC: %s\n", "TR 04");
 		return TRUE;
 	}
 
@@ -793,7 +696,7 @@ static bool is_cdc_message(const unsigned char *buf, int length)
 		buf[21] == 0x34 &&
 		(buf[24] == 0x25 || buf[24] == 0x35))
 	{
-		ibus_log("ibus event: CDC \033[32m%s\033[m\n", "CD 1-04");
+		log_msg("CDC: %s\n", "CD 1-04");
 		return TRUE;
 	}
 
@@ -801,7 +704,7 @@ static bool is_cdc_message(const unsigned char *buf, int length)
 	if (length == 14 &&
 		memcmp(buf, "\x68\x0c\x3b\x23\xc4\x20\x43\x44\x20\x31\x2d\x30\x34\xa7", 14) == 0)
 	{
-		ibus_log("ibus event: CDC \033[32m%s\033[m\n", "US CD 1-04");
+		log_msg("CDC: %s\n", "US CD 1-04");
 		return TRUE;
 	}
 
@@ -809,7 +712,7 @@ static bool is_cdc_message(const unsigned char *buf, int length)
 	if (length == 15 &&
 		memcmp(buf, "\x68\x0d\x3b\x23\x62\x10\x43\x44\x43\x20\x31\x2d\x30\x34\x73", 15) == 0)
 	{
-		ibus_log("ibus event: CDC \033[32m%s\033[m\n", "E83 CDC 1-04");
+		log_msg("CDC: %s\n", "E83 CDC 1-04");
 		return TRUE;
 	}
 
@@ -817,7 +720,7 @@ static bool is_cdc_message(const unsigned char *buf, int length)
 	if (length == 18 &&
 		memcmp(buf, "\x68\x10\x3b\x23\xc4\x30\x43\x44\x20\x31\x2d\x30\x34\x20\x20\x20\x20\xab", 18) == 0)
 	{
-		ibus_log("ibus event: CDC \033[32m%s\033[m\n", "E39 CD 1-04");
+		log_msg("CDC: %s\n", "E39 CD 1-04");
 		return TRUE;
 	}
 
@@ -825,7 +728,7 @@ static bool is_cdc_message(const unsigned char *buf, int length)
 	if (length == 12 &&
 		memcmp(buf, "\x68\x0a\x3b\x23\x62\x10\x54\x52\x20\x30\x34\x2a", 12) == 0)
 	{
-		ibus_log("ibus event: CDC \033[32m%s\033[m\n", "X3 TR 04");
+		log_msg("CDC: %s\n", "X3 TR 04");
 		return TRUE;
 	}
 
@@ -865,7 +768,7 @@ static bool is_cdc_message(const unsigned char *buf, int length)
 			if (length == cdc_len &&
 			    memcmp(buf, cdc_msg, length) == 0)
 			{
-				ibus_log("ibus event: CDC \033[32m%s\033[m\n", "CDC BIN");
+				log_msg("CDC: %s\n", "CDC BIN");
 				return TRUE;
 			}
 		}
@@ -1014,11 +917,6 @@ events[] =
 	{6, "\xF0\x04\x68\x48\x31\xE5", "FM", NULL, 0, ibus_handle_outsidekey},
 	{6, "\xF0\x04\x68\x48\x21\xF5", "AM", NULL, 0, ibus_handle_outsidekey},
 	{6, "\x68\x04\x3b\x46\x02\x13", "screen-mainmenu", NULL, 0, ibus_handle_outsidekey},
-	{6, "\x68\x04\x3b\x46\x01\x10", "screen-none", NULL, 0},
-	{6, "\x68\x04\x3b\x46\x04\x15", "screen-toneoff", NULL, 0},
-	{6, "\x68\x04\x3b\x46\x08\x19", "screen-selectoff", NULL, 0},
-	{6, "\x68\x04\x3b\x46\x0C\x1d", "screen-toneselectoff", NULL, 0, ibus_handle_toneselectoff},
-	{4, "\x68\x04\x3b\x46", "screen-unknown", NULL, 0, ibus_handle_screen},
 
 	{6, "\x50\x04\xc8\x3b\x80\x27", "speak", NULL, 0, ibus_handle_speak},
 	{7, "\x44\x05\xBF\x74\x00\xFF\x75", "immobilized", NULL, 0, ibus_handle_immobilized},
@@ -1083,8 +981,7 @@ static void ibus_handle_message(const unsigned char *msg, int length, const char
 {
 	int i;
 
-	ibus_log("");
-	ibus_dump_hex(flog, msg, length, suffix);
+	log_ibus(msg, length, suffix);
 
 	server_handle_message(msg, length);
 
@@ -1114,11 +1011,6 @@ static void ibus_handle_message(const unsigned char *msg, int length, const char
 			if (events[i].key && !ibus.keyboard_blocked)
 			{
 				keyboard_generate(events[i].key);
-			}
-
-			if (events[i].desc != NULL)
-			{
-				ibus_log("ibus event: \033[32m%s\033[m\n", events[i].desc);
 			}
 
 			if (events[i].command != NULL)
@@ -1172,7 +1064,7 @@ static bool ibus_discard_receive_buffer(void)
 		{
 			recovered = TRUE;
 
-			ibus_handle_message(ibus.buf, len, "(recover)", TRUE);
+			ibus_handle_message(ibus.buf, len, "recover", TRUE);
 			ibus_discard_bytes(len);
 
 			if (!(ibus.bufPos >= 5))
@@ -1215,8 +1107,7 @@ static void ibus_read(int condition, void *unused)
 
 		if (now - ibus.last_byte > 64 && ibus.bufPos)
 		{
-			ibus_log("ibus_read(): discard %d: ", ibus.bufPos);
-			ibus_dump_hex(flog, ibus.buf, ibus.bufPos, NULL);
+			log_msg_with_hex(ibus.buf, ibus.bufPos, "ibus_read(): discard %d: ", ibus.bufPos);
 			ibus_discard_receive_buffer();
 		}
 		ibus.last_byte = now;
@@ -1234,8 +1125,7 @@ retry:
 		{
 			if (!ibus_good_checksum(ibus.buf, ibus.bufPos))
 			{
-				ibus_log("");
-				ibus_dump_hex(flog, ibus.buf, ibus.bufPos, "(corrupt)");
+				log_ibus(ibus.buf, ibus.bufPos, "corrupt");
 
 				while (ibus.bufPos >= 5)
 				{
@@ -1249,7 +1139,7 @@ retry:
 					{
 						recovered = TRUE;
 
-						ibus_handle_message(ibus.buf, len, "(recover)", TRUE);
+						ibus_handle_message(ibus.buf, len, "recover", TRUE);
 						ibus_discard_bytes(len);
 
 						if (!(ibus.bufPos >= 4))
@@ -1296,7 +1186,7 @@ static int ibus_init_serial_port(bool have_log)
 	if (ibus.ifd == -1)
 	{
 		if (have_log)
-			ibus_log("Can't open ibus [%s] %s\n", ibus.port_name, strerror(errno));
+			log_msg("Can't open ibus [%s] %s\n", ibus.port_name, strerror(errno));
 		else
 			fprintf(stderr, "Can't open ibus [%s] %s\n", ibus.port_name, strerror(errno));
 		return -1;
@@ -1338,7 +1228,7 @@ static int ibus_1s_tick(void *unused)
 	/* flush log every 30s */
 	if (i == 4)
 	{
-		fflush(flog);
+		log_flush();
 	}
 
 	/* every 15s */
@@ -1346,7 +1236,7 @@ static int ibus_1s_tick(void *unused)
 	{
 		if (ibus.read_msgs == 0)
 		{
-			ibus_log("ibus idle\n");
+			log_msg("ibus idle\n");
 		}
 		else
 		{
@@ -1365,7 +1255,7 @@ static int ibus_1s_tick(void *unused)
 	/* 5 minute idle timeout */
 	if (mainloop_get_millisec() - ibus.last_byte > ibus.idle_timeout * 1000)
 	{
-		ibus_log("idle timeout\n");
+		log_msg("idle timeout\n");
 		power_off();
 	}
 
@@ -1413,8 +1303,7 @@ static int ibus_50ms_tick(void *unused)
 		now = mainloop_get_millisec();
 		if (now - ibus.last_byte > 200)
 		{
-			ibus_log("ibus_50ms_tick(): discard %d: ", ibus.bufPos);
-			ibus_dump_hex(flog, ibus.buf, ibus.bufPos, NULL);
+			log_msg_with_hex(ibus.buf, ibus.bufPos, "ibus_50ms_tick(): discard %d: ", ibus.bufPos);
 			ibus_discard_receive_buffer();
 		}
 	}
@@ -1437,7 +1326,7 @@ static int ibus_50ms_tick(void *unused)
 
 		if (giveup)
 		{
-			ibus_log("serial port is broken - reopening\n");
+			log_msg("serial port is broken - reopening\n");
 			//ibus_discard_queue();
 			ibus_init_serial_port(TRUE);
 		}
@@ -1489,12 +1378,11 @@ int ibus_send_ascii(const char *cmd)
 	return 0;
 }
 
-int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool cdc_announce, int cdc_info_interval, int gpio_number, int idle_timeout, int hw_version, bool aux, bool handle_nextprev, bool rotary_opposite, bool z4_keymap, int server_port)
+int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool cdc_announce, int cdc_info_interval, int gpio_number, int idle_timeout, int hw_version, bool aux, bool handle_nextprev, bool rotary_opposite, bool z4_keymap, int server_port, int log_level)
 {
 	struct timespec ts;
 
 	clock_gettime(CLOCK_MONOTONIC, &ts);
-	ibus.start = ts.tv_sec;
 	ibus.port_name = strdup(port);
 
 	if (ibus_init_serial_port(FALSE) == -1)
@@ -1509,28 +1397,7 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 		return -1;
 	}
 
-#ifdef __i386__
-	flog = fopen("./ibus.txt", "a");
-#else
-	{
-		char logfile[256];
-		struct passwd *pw;
-
-		flog = NULL;
-		pw = getpwuid(getuid());
-		if (pw)
-		{
-			sprintf(logfile, "%s/ibus.txt", pw->pw_dir);
-			flog = fopen(logfile, "a");
-		}
-
-		if (flog == NULL)
-		{
-			flog = fopen("/storage/ibus.txt", "a");
-		}
-	}
-#endif
-	if (flog == NULL)
+	if (log_open(ts.tv_sec, log_level) != 0)
 	{
 		fprintf(stderr, "Cannot write to log: %s\n", strerror(errno));
 		mainloop_input_remove(ibus.ifd_tag);
@@ -1540,8 +1407,8 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 		return -2;
 	}
 
-	ibus_log("startup bt=%d cam=%d anc=%d cdci=%d gpio=%d idle=%d hwv=%d aux=%d hnp=%d rop=%d [" __DATE__ "]\n", bluetooth, camera, cdc_announce, cdc_info_interval, gpio_number, idle_timeout, hw_version, aux, handle_nextprev, rotary_opposite);
-	fflush(flog);
+	log_msg("startup bt=%d cam=%d anc=%d cdci=%d gpio=%d idle=%d hwv=%d aux=%d hnp=%d rop=%d [" __DATE__ "]\n", bluetooth, camera, cdc_announce, cdc_info_interval, gpio_number, idle_timeout, hw_version, aux, handle_nextprev, rotary_opposite);
+	log_flush();
 
 	ibus.last_byte = mainloop_get_millisec();
 	ibus.bluetooth = bluetooth;
@@ -1612,7 +1479,7 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 	if (startup)
 	{
 		ibus_send_ascii(startup);
-		fflush(flog);
+		log_flush();
 		free(startup);
 	}
 
