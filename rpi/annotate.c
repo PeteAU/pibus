@@ -80,7 +80,7 @@ static const char *buttons[64] =
 	/*20*/ "select",
 	/*21*/ "AM",
 	/*22*/ "RDS",
-	/*23*/ "<<",
+	/*23*/ "mode",
 	/*24*/ "ejectc",
 	/*25*/ "repeat",
 	/*26*/ "0x26",
@@ -256,6 +256,7 @@ static int annotate_cd_command(char *outbuf, int max, const unsigned char *data,
 		case 0x01: cmd = "stop"; break;
 		case 0x02: cmd = "pause"; break;
 		case 0x03: cmd = "play"; break;
+		case 0x04: cmd = data[5] ? "fwd" : "rwd"; break;
 		case 0x06: cmd = "diskchange"; break;
 		case 0x0a: cmd = data[5] ? "prev" : "next"; break;
 	}
@@ -282,6 +283,8 @@ static int annotate_cd_status(char *outbuf, int max, const unsigned char *data, 
 		case 0x00: sta = "stopped"; break;
 		case 0x01: sta = "paused"; break;
 		case 0x02: sta = "playing"; break;
+		case 0x07: sta = "searching"; break;
+		case 0x09: sta = "checking"; break;
 		case 0x0b: sta = "nodisk"; break;
 		case 0x0c: sta = "disk"; break;
 	}
@@ -328,6 +331,28 @@ int annotate_ibus_message(char *outbuf, int max, const unsigned char *data, int 
 		}
 
 		return snprintf(outbuf, max, "wheel-%s=%s%s", type, button, to);
+	}
+
+	/* board monitor functions */
+	if (length == 7 && data[0] == 0xf0 && data[3] == 0x47)
+	{
+		const char *type = "?";
+		const char *button = "?";
+
+		switch (data[5] & 0xc0)
+		{
+			case 0x00: type = "down"; break;
+			case 0x40: type = "hold"; break;
+			case 0x80: type = "up"; break;
+		}
+
+		switch (data[5] & 0x3f)
+		{
+			case 0x38: button = "info"; break;
+			case 0x0f: button = "select"; break;
+		}
+
+		return snprintf(outbuf, max, "button-%s=%s", type, button);
 	}
 
 	/* board monitor buttons */
