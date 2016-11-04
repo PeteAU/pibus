@@ -555,7 +555,12 @@ static void cdchanger_handle_inforeq(const unsigned char *msg, int length)
 static void enter_pi_screen(const unsigned char *msg, int length)
 {
 	ibus.keyboard_blocked = FALSE;
-	ibus.playing = TRUE;
+
+	if (!ibus.playing)
+	{
+		ibus.playing = TRUE;
+		cdchanger_send_inforeq();
+	}
 
 	if (ibus.hw_version >= 4)
 	{
@@ -571,7 +576,8 @@ static void cdchanger_handle_stop(const unsigned char *msg, int length)
 		return;
 	}
 
-	ibus_send(ibus.ifd, not_playing, 12, ibus.gpio_number);
+	ibus_remove_tag_from_queue(TAG_CDC);
+	ibus_send_with_tag(ibus.ifd, not_playing, 12, ibus.gpio_number, TRUE, TRUE, TAG_CDC);
 	ibus.playing = FALSE;
 
 	if (ibus.cdc_info_tag != -1)
@@ -588,7 +594,8 @@ static void cdchanger_handle_pause(const unsigned char *msg, int length)
 		return;
 	}
 
-	ibus_send(ibus.ifd, pause_playing, 12, ibus.gpio_number);
+	ibus_remove_tag_from_queue(TAG_CDC);
+	ibus_send_with_tag(ibus.ifd, pause_playing, 12, ibus.gpio_number, TRUE, TRUE, TAG_CDC);
 	ibus.playing = FALSE;
 }
 
@@ -601,6 +608,22 @@ static void cdchanger_handle_start(const unsigned char *msg, int length)
 
 	ibus_send(ibus.ifd, start_playing, 12, ibus.gpio_number);
 	ibus.playing = TRUE;
+}
+
+static void cdchanger_handle_stopped(const unsigned char *msg, int length)
+{
+	if (!ibus.aux)
+	{
+		ibus.playing = FALSE;
+	}
+}
+
+static void cdchanger_handle_playing(const unsigned char *msg, int length)
+{
+	if (!ibus.aux)
+	{
+		ibus.playing = TRUE;
+	}
 }
 
 static void cdchanger_handle_diskchange(const unsigned char *msg, int length)
@@ -942,6 +965,11 @@ events[] =
 	{5, "\x68\x05\x18\x38\x06",         "cd-change",NULL, 0, cdchanger_handle_diskchange},
 	{7, "\x68\x05\x18\x38\x0a\x01\x46", "cd-prev",  NULL, KEY_COMMA, cdchanger_handle_start},
 	{7, "\x68\x05\x18\x38\x0a\x00\x47", "cd-next",  NULL, KEY_DOT, cdchanger_handle_start},
+
+	/* For status tracking */
+	{5, "\x18\x0a\x68\x39\x00", "cd-stopped", NULL, 0, cdchanger_handle_stopped},
+	{5, "\x18\x0a\x68\x39\x01", "cd-paused", NULL, 0, cdchanger_handle_stopped},
+	{5, "\x18\x0a\x68\x39\x02", "cd-playing", NULL, 0, cdchanger_handle_playing},
 
 	/* These are handled by the ATtiny on V2 and V3 boards */
 	{6, "\xF0\x04\xFF\x48\x08\x4B", "phone", NULL, 0, ibus_handle_phone},
