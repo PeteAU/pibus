@@ -401,7 +401,7 @@ int annotate_ibus_message(char *outbuf, int max, const unsigned char *data, int 
 	{
 		return snprintf(outbuf, max, "\"%.*s\"", length - 8, data + 7);
 	}
-	if (length > 7 && data[2] == 0x3b && (data[3] == 0x23))
+	if (length > 7 && (data[2] == 0x3b || data[2] == 0x80) && (data[3] == 0x23))
 	{
 		return snprintf(outbuf, max, "\"%.*s\"", length - 7, data + 6);
 	}
@@ -447,8 +447,8 @@ int annotate_ibus_message(char *outbuf, int max, const unsigned char *data, int 
 	}
 	if (length == 8 && memcmp(data, "\x80\x06\xbf\x19", 4) == 0)
 	{
-		int16_t coolant = (data[6] << 8) + ((signed)data[5]);
-		return snprintf(outbuf, max, "outside=%d coolant=%d", (signed)data[4], coolant);
+		int16_t coolant = (data[6] << 8) + ((signed char)data[5]);
+		return snprintf(outbuf, max, "outside=%d coolant=%d", (signed char)data[4], coolant);
 	}
 	if (length == 9 && memcmp(data, "\x80\x07\xbf\x15", 4) == 0)
 	{
