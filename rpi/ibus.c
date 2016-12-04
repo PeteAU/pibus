@@ -556,7 +556,7 @@ static void enter_pi_screen(const unsigned char *msg, int length)
 {
 	ibus.keyboard_blocked = FALSE;
 
-	if (!ibus.playing)
+	if (!ibus.aux && !ibus.playing)
 	{
 		ibus.playing = TRUE;
 		cdchanger_send_inforeq();
