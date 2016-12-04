@@ -53,6 +53,14 @@ typedef enum
 }
 videoSource_t;
 
+typedef enum
+{
+	INPUT_CDC = 0,
+	INPUT_AUX = 1,
+	INPUT_TAPE = 2
+}
+input_t;
+
 static struct
 {
 	bool have_time;
@@ -63,11 +71,11 @@ static struct
 	bool have_camera;
 	bool cdc_announce;
 	bool set_gps_time;
-	bool aux;
 	bool handle_nextprev;
 	bool rotary_opposite;
 	bool z4_keymap;
 
+	input_t input;
 	uint64_t last_byte;
 	int bufPos;
 	unsigned char buf[192];
@@ -107,11 +115,11 @@ ibus =
 	.have_camera = TRUE,
 	.cdc_announce = TRUE,
 	.set_gps_time = FALSE,
-	.aux = FALSE,
 	.handle_nextprev = FALSE,
 	.rotary_opposite = FALSE,
 	.z4_keymap = FALSE,
 
+	.input = INPUT_CDC,
 	.last_byte = 0,
 	.bufPos = 0,
 	.buf = {0,},
@@ -533,7 +541,7 @@ static int cdchanger_interval_timeout(void *unused)
 
 static void cdchanger_handle_inforeq(const unsigned char *msg, int length)
 {
-	if (ibus.aux)
+	if (ibus.input != INPUT_CDC)
 	{
 		return;
 	}
@@ -556,7 +564,7 @@ static void enter_pi_screen(const unsigned char *msg, int length)
 {
 	ibus.keyboard_blocked = FALSE;
 
-	if (!ibus.aux && !ibus.playing)
+	if (ibus.input == INPUT_CDC && !ibus.playing)
 	{
 		ibus.playing = TRUE;
 		cdchanger_send_inforeq();
@@ -571,7 +579,7 @@ static void enter_pi_screen(const unsigned char *msg, int length)
 
 static void cdchanger_handle_stop(const unsigned char *msg, int length)
 {
-	if (ibus.aux)
+	if (ibus.input != INPUT_CDC)
 	{
 		return;
 	}
@@ -589,7 +597,7 @@ static void cdchanger_handle_stop(const unsigned char *msg, int length)
 
 static void cdchanger_handle_pause(const unsigned char *msg, int length)
 {
-	if (ibus.aux)
+	if (ibus.input != INPUT_CDC)
 	{
 		return;
 	}
@@ -601,7 +609,7 @@ static void cdchanger_handle_pause(const unsigned char *msg, int length)
 
 static void cdchanger_handle_start(const unsigned char *msg, int length)
 {
-	if (ibus.aux)
+	if (ibus.input != INPUT_CDC)
 	{
 		return;
 	}
@@ -612,7 +620,7 @@ static void cdchanger_handle_start(const unsigned char *msg, int length)
 
 static void cdchanger_handle_stopped(const unsigned char *msg, int length)
 {
-	if (!ibus.aux)
+	if (ibus.input == INPUT_CDC)
 	{
 		ibus.playing = FALSE;
 	}
@@ -620,7 +628,7 @@ static void cdchanger_handle_stopped(const unsigned char *msg, int length)
 
 static void cdchanger_handle_playing(const unsigned char *msg, int length)
 {
-	if (!ibus.aux)
+	if (ibus.input == INPUT_CDC)
 	{
 		ibus.playing = TRUE;
 	}
@@ -633,17 +641,15 @@ static void cdchanger_handle_diskchange(const unsigned char *msg, int length)
 		return;
 	}
 
-	if (ibus.aux)
+	if (ibus.input == INPUT_CDC)
 	{
-		return;
+		ibus_send(ibus.ifd, start_playing, 12, ibus.gpio_number);
 	}
-
-	ibus_send(ibus.ifd, start_playing, 12, ibus.gpio_number);
 }
 
 static void cdchanger_handle_poll(const unsigned char *msg, int length)
 {
-	if (ibus.aux)
+	if (ibus.input != INPUT_CDC)
 	{
 		return;
 	}
@@ -674,7 +680,19 @@ static void cdchanger_announce()
 
 static void ibus_handle_aux(const unsigned char *buf, int length)
 {
-	if (ibus.aux)
+	if (ibus.input == INPUT_AUX)
+	{
+		enter_pi_screen(buf, length);
+	}
+	else
+	{
+		ibus_handle_outsidekey(buf, length);
+	}
+}
+
+static void ibus_handle_tape(const unsigned char *buf, int length)
+{
+	if (ibus.input == INPUT_TAPE)
 	{
 		enter_pi_screen(buf, length);
 	}
@@ -980,6 +998,8 @@ events[] =
 	{20,"\x68\x12\x3b\x23\x62\x10\x41\x55\x58\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x5c", NULL/*"aux"*/, NULL, 0, ibus_handle_aux},
 	{10,"\x68\x08\x3b\x23\x62\x10\x41\x55\x58\x46", NULL/*"aux"*/, NULL, 0, ibus_handle_aux},
 
+	{20,"\x68\x12\x3b\x23\x62\x10\x4e\x4f\x20\x54\x41\x50\x45\x20\x20\x20\x20\x20\x20\x31", NULL/*"no tape"*/, NULL, 0, ibus_handle_tape},
+
 #if 0
 	/* The most common CDC message */
 	{20,"\x68\x12\x3b\x23\x62\x10\x43\x44\x43\x20\x31\x2d\x30\x34\x20\x20\x20\x20\x20\x4c", "CDC 1-04", NULL, 0, cdchanger_handle_cdcmode},
@@ -1013,16 +1033,19 @@ static void ibus_handle_message(const unsigned char *msg, int length, const char
 
 	server_handle_message(msg, length);
 
-	/* are we entering the CDC screen? */
-	if (!ibus.aux && is_cdc_message(msg, length))
+	if (ibus.input == INPUT_CDC)
 	{
-		enter_pi_screen(msg, length);
-	}
+		/* are we entering the CDC screen? */
+		if (is_cdc_message(msg, length))
+		{
+			enter_pi_screen(msg, length);
+		}
 
-	/* got a message from the radio */
-	if (msg[0] == 0x68 && !ibus.aux)
-	{
-		cdchanger_announce();
+		/* got a message from the radio */
+		if (msg[0] == 0x68)
+		{
+			cdchanger_announce();
+		}
 	}
 
 	ibus.read_msgs++;
@@ -1406,7 +1429,7 @@ int ibus_send_ascii(const char *cmd)
 	return 0;
 }
 
-int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool cdc_announce, int cdc_info_interval, int gpio_number, int idle_timeout, int hw_version, bool aux, bool handle_nextprev, bool rotary_opposite, bool z4_keymap, int server_port, int log_level)
+int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool cdc_announce, int cdc_info_interval, int gpio_number, int idle_timeout, int hw_version, int input, bool handle_nextprev, bool rotary_opposite, bool z4_keymap, int server_port, int log_level)
 {
 	struct timespec ts;
 
@@ -1435,7 +1458,7 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 		return -2;
 	}
 
-	log_msg("startup bt=%d cam=%d anc=%d cdci=%d gpio=%d idle=%d hwv=%d aux=%d hnp=%d rop=%d [" __DATE__ "]\n", bluetooth, camera, cdc_announce, cdc_info_interval, gpio_number, idle_timeout, hw_version, aux, handle_nextprev, rotary_opposite);
+	log_msg("startup bt=%d cam=%d anc=%d cdci=%d gpio=%d idle=%d hwv=%d in=%d hnp=%d rop=%d [" __DATE__ "]\n", bluetooth, camera, cdc_announce, cdc_info_interval, gpio_number, idle_timeout, hw_version, input, handle_nextprev, rotary_opposite);
 	log_flush();
 
 	ibus.last_byte = mainloop_get_millisec();
@@ -1446,7 +1469,7 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 	ibus.gpio_number = gpio_number;
 	ibus.idle_timeout = idle_timeout;
 	ibus.hw_version = hw_version;
-	ibus.aux = aux;
+	ibus.input = input;
 	ibus.handle_nextprev = handle_nextprev;
 	ibus.rotary_opposite = rotary_opposite;
 	ibus.z4_keymap = z4_keymap;
