@@ -91,6 +91,7 @@ static struct
 	int idle_timeout;
 	int hw_version;
 	int num_time_requests;
+	int num_date_requests;
 
 	videoSource_t videoSource;
 
@@ -135,6 +136,7 @@ ibus =
 	.idle_timeout = 0,
 	.hw_version = 0,
 	.num_time_requests = 0,
+	.num_date_requests = 0,
 
 	.videoSource = VIDEO_SRC_BMW,
 };
@@ -1283,7 +1285,7 @@ static int ibus_1s_tick(void *unused)
 	}
 
 	/* every 15s */
-	if ((i == 8 || i == 23) && ibus.num_time_requests <= 3)
+	if (i == 8 || i == 23)
 	{
 		if (ibus.read_msgs == 0)
 		{
@@ -1291,14 +1293,15 @@ static int ibus_1s_tick(void *unused)
 		}
 		else
 		{
-			if (!ibus.have_time)
+			if (!ibus.have_time && ibus.num_time_requests <= 3)
 			{
 				ibus_request_time();
 				ibus.num_time_requests++;
 			}
-			if (!ibus.have_date)
+			if (!ibus.have_date && ibus.num_date_requests <= 3)
 			{
 				ibus_request_date();
+				ibus.num_date_requests++;
 			}
 		}
 	}
