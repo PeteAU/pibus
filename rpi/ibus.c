@@ -57,7 +57,8 @@ typedef enum
 {
 	INPUT_CDC = 0,
 	INPUT_AUX = 1,
-	INPUT_TAPE = 2
+	INPUT_TAPE = 2,
+	INPUT_NONE = 9,
 }
 input_t;
 
@@ -1053,7 +1054,7 @@ static void ibus_handle_message(const unsigned char *msg, int length, const char
 
 	ibus.read_msgs++;
 
-	for (i = 0; i < sizeof(events) / sizeof(events[0]); i++)
+	if (ibus.input != INPUT_NONE) for (i = 0; i < sizeof(events) / sizeof(events[0]); i++)
 	{
 		if (events[i].match_length > length)
 		{
@@ -1292,7 +1293,7 @@ static int ibus_1s_tick(void *unused)
 		{
 			log_msg("ibus idle\n");
 		}
-		else
+		else if (ibus.input != INPUT_NONE)
 		{
 			if (!ibus.have_time && ibus.num_time_requests <= 3)
 			{

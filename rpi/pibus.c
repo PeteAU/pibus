@@ -98,7 +98,7 @@ int main(int argc, char **argv)
 					"Usage: %s [flags] [serial-port]\n"
 					"\n"
 					"Flags:\n"
-					"\t-a <input>   Input select (0=CDC 1=AUX 2=TAPE) (V4 boards only)\n"
+					"\t-a <input>   Input select (0=CDC 1=AUX 2=TAPE 9=NONE) (V4 boards only)\n"
 					"\t-b           Car has bluetooth, don't use Phone and Speak buttons\n"
 					"\t-c <time>    Force CDC-info replies every <time> seconds\n"
 					"\t-g <number>  GPIO number to use for IBUS line monitor (0 = Use TH3122)\n"
