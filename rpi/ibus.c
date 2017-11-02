@@ -846,6 +846,8 @@ static void ibus_l1(const unsigned char *buf, int length)
 
 	if (ibus.z4_keymap)
 		keyboard_generate(KEY_I);
+	else
+		keyboard_generate(KEY_C);
 }
 
 static void ibus_l2(const unsigned char *buf, int length)
@@ -854,6 +856,13 @@ static void ibus_l2(const unsigned char *buf, int length)
 
 static void ibus_l3(const unsigned char *buf, int length)
 {
+	if (ibus.keyboard_blocked)
+	{
+		return;
+	}
+
+	if (ibus.z4_keymap)
+		keyboard_generate(KEY_C);
 }
 
 static void ibus_l4(const unsigned char *buf, int length)
@@ -942,7 +951,7 @@ events[] =
 
 	{6, "\xF0\x04\x68\x48\x51\x85", "L1", NULL, 0, ibus_l1},
 	{6, "\xF0\x04\x68\x48\x41\x95", "L2", NULL, KEY_TAB},
-//	{6, "\xF0\x04\x68\x48\x52\x86", "L3", NULL, 0, ibus_l3},
+	{6, "\xF0\x04\x68\x48\x52\x86", "L3", NULL, 0, ibus_l3},
 	{6, "\xF0\x04\x68\x48\x42\x96", "L4", NULL, KEY_ESC},
 //	{6, "\xF0\x04\x68\x48\x53\x87", "L5", NULL, 0, ibus_l5},
 //	{6, "\xF0\x04\x68\x48\x43\x97", "L6", NULL, 0, ibus_l6},
