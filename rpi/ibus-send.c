@@ -126,7 +126,8 @@ bool ibus_service_queue(int ifd, bool can_send, int gpio_number, bool *giveup)
 		}
 
 		i++;
-		list = list->next;
+		/*list = list->next;*/
+		list = NULL;	/* never loop, maintain >10ms gap */
 	}
 
 	if (packets_sent)
