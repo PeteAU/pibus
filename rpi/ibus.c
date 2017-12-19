@@ -93,6 +93,8 @@ static struct
 	int hw_version;
 	int num_time_requests;
 	int num_date_requests;
+	int16_t coolant_temp;
+	int16_t outside_temp;
 
 	videoSource_t videoSource;
 
@@ -138,6 +140,8 @@ ibus =
 	.hw_version = 0,
 	.num_time_requests = 0,
 	.num_date_requests = 0,
+	.coolant_temp = -128,
+	.outside_temp = -128,
 
 	.videoSource = VIDEO_SRC_BMW,
 };
@@ -262,6 +266,15 @@ static void ibus_handle_ike_sensor(const unsigned char *msg, int length)
 		default:	/* any other gear */
 			ibus_exec("pibus-event.sh", "gear_other");
 			break;
+	}
+}
+
+static void ibus_handle_temps(const unsigned char *data, int length)
+{
+	if (length > 6)
+	{
+		ibus.coolant_temp = (data[6] << 8) + ((signed char)data[5]);
+		ibus.outside_temp = ((signed char)data[4]);
 	}
 }
 
@@ -1006,6 +1019,7 @@ events[] =
 	{4, "\x80\x0C\xBF\x13", "IKE sensor", NULL, 0, ibus_handle_ike_sensor},
 	{4, "\x80\x0A\xBF\x13", "IKE sensor", NULL, 0, ibus_handle_ike_sensor},
 	{4, "\x80\x09\xBF\x13", "IKE sensor", NULL, 0, ibus_handle_ike_sensor},
+	{4, "\x80\x06\xBF\x19", NULL, NULL, 0, ibus_handle_temps},
 
 	{20,"\x68\x12\x3b\x23\x62\x10\x41\x55\x58\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x5c", NULL/*"aux"*/, NULL, 0, ibus_handle_aux},
 	{10,"\x68\x08\x3b\x23\x62\x10\x41\x55\x58\x46", NULL/*"aux"*/, NULL, 0, ibus_handle_aux},
