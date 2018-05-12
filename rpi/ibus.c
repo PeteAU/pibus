@@ -95,6 +95,8 @@ static struct
 	int num_date_requests;
 	int16_t coolant_temp;
 	int16_t outside_temp;
+	int high_coolant_count;
+	int coolant_warning;
 
 	videoSource_t videoSource;
 
@@ -142,6 +144,8 @@ ibus =
 	.num_date_requests = 0,
 	.coolant_temp = -128,
 	.outside_temp = -128,
+	.high_coolant_count = 0,
+	.coolant_warning = 0,
 
 	.videoSource = VIDEO_SRC_BMW,
 };
@@ -271,11 +275,33 @@ static void ibus_handle_ike_sensor(const unsigned char *msg, int length)
 
 static void ibus_handle_temps(const unsigned char *data, int length)
 {
-	if (length > 6)
+	if (length != 8)
+		return;
+
+	ibus.coolant_temp = (data[6] << 8) + ((signed char)data[5]);
+	ibus.outside_temp = ((signed char)data[4]);
+
+	if (ibus.high_coolant_count == 999)
+		return;
+
+	if (ibus.coolant_temp < ibus.coolant_warning)
 	{
-		ibus.coolant_temp = (data[6] << 8) + ((signed char)data[5]);
-		ibus.outside_temp = ((signed char)data[4]);
+		ibus.high_coolant_count = 0;
+		return;
 	}
+
+	if (ibus.high_coolant_count >= 1)
+	{
+		RODATA flash_leds[]  = "\xc8\x04\xe7\x2b\x3f\x3f";
+
+		ibus_remove_tag_from_queue(TAG_LEDS);
+		ibus_send_with_tag(ibus.ifd, flash_leds, 6, ibus.gpio_number, FALSE, FALSE, TAG_LEDS);
+
+		ibus.high_coolant_count = 999;
+		return;
+	}
+
+	ibus.high_coolant_count++;
 }
 
 static bool ibus_good_checksum(const unsigned char *msg, int length)
@@ -1457,7 +1483,7 @@ int ibus_send_ascii(const char *cmd)
 	return 0;
 }
 
-int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool cdc_announce, int cdc_info_interval, int gpio_number, int idle_timeout, int hw_version, int input, bool handle_nextprev, bool rotary_opposite, bool z4_keymap, int server_port, int log_level)
+int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool cdc_announce, int cdc_info_interval, int gpio_number, int idle_timeout, int hw_version, int input, bool handle_nextprev, bool rotary_opposite, bool z4_keymap, int server_port, int log_level, int coolant_warning)
 {
 	struct timespec ts;
 
@@ -1501,6 +1527,7 @@ int ibus_init(const char *port, char *startup, bool bluetooth, bool camera, bool
 	ibus.handle_nextprev = handle_nextprev;
 	ibus.rotary_opposite = rotary_opposite;
 	ibus.z4_keymap = z4_keymap;
+	ibus.coolant_warning = coolant_warning;
 
 	mainloop_timeout_add(50, ibus_50ms_tick, NULL);
 	mainloop_timeout_add(1000, ibus_1s_tick, NULL);

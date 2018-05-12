@@ -2,6 +2,7 @@
 #define TAG_CDC		2
 #define TAG_TIME	3
 #define TAG_DATE	4
+#define TAG_LEDS	5
 
 bool ibus_service_queue(int ifd, bool can_send, int gpio_number, bool *giveup);
 void ibus_remove_from_queue(const unsigned char *msg, int length);

@@ -36,10 +36,11 @@ int main(int argc, char **argv)
 	bool rotary_opposite = FALSE;
 	bool z4_keymap = FALSE;
 	int log_level = 2;
+	int coolant_warning = 300;
 
 	mainloop_init();
 
-	while ((opt = getopt(argc, argv, "a:c:g:l:p:s:t:v:z:bhmnorV")) != -1)
+	while ((opt = getopt(argc, argv, "a:c:g:l:p:s:t:w:v:z:bhmnorV")) != -1)
 	{
 		switch (opt)
 		{
@@ -80,6 +81,9 @@ int main(int argc, char **argv)
 			case 't':
 				idle_timeout = atoi(optarg);
 				break;
+			case 'w':
+				coolant_warning = atoi(optarg);
+				break;
 			case 'v':
 				hw_version = atoi(optarg);
 				break;
@@ -110,6 +114,7 @@ int main(int argc, char **argv)
 					"\t-r           Do not switch to camera in reverse gear\n"
 					"\t-s <string>  Send extra string to IBUS at startup\n"
 					"\t-t <seconds> Set the idle timeout in seconds (V4 boards only, default 300)\n"
+					"\t-w <temp>    Generate coolant warning above <temp> degrees\n"
 					"\t-v <number>  Set PiBUS hardware version\n"
 					"\t-z4          Use alternative Z4 keymap\n"
 					"\t-V           Show version information\n"
@@ -135,7 +140,7 @@ int main(int argc, char **argv)
 		return -4;
 	}
 
-	if (ibus_init(port, startup, bluetooth, camera, cdc_announce, cdcinterval, gpio_number, idle_timeout, hw_version, input, handle_nextprev, rotary_opposite, z4_keymap, server_port, log_level) != 0)
+	if (ibus_init(port, startup, bluetooth, camera, cdc_announce, cdcinterval, gpio_number, idle_timeout, hw_version, input, handle_nextprev, rotary_opposite, z4_keymap, server_port, log_level, coolant_warning) != 0)
 	{
 		return -2;
 	}
