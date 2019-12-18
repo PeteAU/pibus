@@ -14,6 +14,9 @@
 #define V2_BCM2708_PERI_BASE        0x3F000000
 #define V2_GPIO_BASE                (V2_BCM2708_PERI_BASE + 0x200000) /* GPIO controller */
 
+#define V4_BCM2711_PERI_BASE        0xFE000000
+#define V4_GPIO_BASE                (V4_BCM2711_PERI_BASE + 0x200000) /* GPIO controller */
+
 #define GPIO_PIN_L0_FSEL0_OFFSET	(0)		/* GPFSEL0 */
 #define GPIO_PIN_L0_FSEL1_OFFSET	((0x04/4))	/* GPFSEL1 */
 #define GPIO_PIN_L0_SET_OFFSET		((0x1C/4))	/* GPSET0 */
@@ -37,28 +40,32 @@
 static volatile unsigned int *gpio;
 
 
-static int pi_v2()
+static unsigned int gpio_base_address()
 {
 	char buf[512];
 	int fd;
-	int v2 = 0;
+	unsigned int base = V1_GPIO_BASE;
 
-	fd = open("/proc/cpuinfo", O_RDONLY);
+	fd = open("/sys/firmware/devicetree/base/model", O_RDONLY);
 	if (fd != -1)
 	{
 		if (read(fd, buf, sizeof (buf)) > 10)
 		{
 			buf[sizeof(buf) - 1] = 0;
-			/* Either of these are not an old V1 Pi */
-			if (strstr(buf, "ARMv7") || strstr(buf, "ARMv8"))
+
+			if (strstr(buf, "Pi 2") || strstr(buf, "Pi 3"))
 			{
-				v2 = 1;
+				base = V2_GPIO_BASE;
+
+			} else if (strstr(buf, "Pi 4"))
+			{
+				base = V4_GPIO_BASE;
 			}
 		}
 		close(fd);
 	}
 
-	return v2;
+	return base;
 }
 
 int gpio_init()
@@ -81,7 +88,7 @@ int gpio_init()
 		PROT_READ|PROT_WRITE,// Enable reading & writting to mapped memory
 		MAP_SHARED,       //Shared with other processes
 		mem_fd,           //File to map
-		pi_v2() ? V2_GPIO_BASE : V1_GPIO_BASE         //Offset to GPIO peripheral
+		gpio_base_address()  //Offset to GPIO peripheral
 	);
 
 	close(mem_fd); //No need to keep mem_fd open after mmap
